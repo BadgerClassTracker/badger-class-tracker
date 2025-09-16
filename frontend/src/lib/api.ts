@@ -108,6 +108,19 @@ class ApiClient {
     // Return as-is if already in expected format
     return data;
   }
+
+  // Terms endpoint (public)
+  async getTerms(): Promise<any> {
+    const response = await fetch(`${API_BASE}/terms`);
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Get terms failed' }));
+      throw new Error(error.error || error.message || 'Failed to get terms');
+    }
+
+    const data = await response.json();
+    return data;
+  }
 }
 
 export const api = new ApiClient();
