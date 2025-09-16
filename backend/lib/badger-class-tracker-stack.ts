@@ -246,6 +246,17 @@ export class BadgerClassTrackerStack extends Stack {
     );
     attachRetention("SearchCoursesFn", searchCoursesFn);
 
+    const getTermsFn = nodeFn(
+      "GetTermsFn",
+      "services/api/get-terms.ts",
+      {},
+      {
+        functionName: `bct-${stage}-get-terms`,
+        timeout: Duration.seconds(10),
+      }
+    );
+    attachRetention("GetTermsFn", getTermsFn);
+
     // Routes
     const subs = api.root.addResource("subscriptions");
     // Authorizer wired to your user pool
@@ -348,6 +359,32 @@ export class BadgerClassTrackerStack extends Stack {
       }],
     });
     courses.addMethod("GET", new apigw.LambdaIntegration(searchCoursesFn));
+
+    // Public terms endpoint (no auth required)
+    const terms = api.root.addResource("terms");
+    terms.addMethod("OPTIONS", new apigw.MockIntegration({
+      integrationResponses: [{
+        statusCode: "200",
+        responseParameters: {
+          "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization,X-Requested-With,x-api-key'",
+          "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,POST,DELETE,PUT,PATCH'",
+          "method.response.header.Access-Control-Allow-Origin": "'*'",
+        },
+      }],
+      requestTemplates: {
+        "application/json": '{"statusCode": 200}',
+      },
+    }), {
+      methodResponses: [{
+        statusCode: "200",
+        responseParameters: {
+          "method.response.header.Access-Control-Allow-Headers": true,
+          "method.response.header.Access-Control-Allow-Methods": true,
+          "method.response.header.Access-Control-Allow-Origin": true,
+        },
+      }],
+    });
+    terms.addMethod("GET", new apigw.LambdaIntegration(getTermsFn));
 
     /* ──────────────────────────────────────────────────────────────────────────
      * 4) Compute: Poller (scheduled) + Notifier (event-driven)
