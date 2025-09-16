@@ -1,0 +1,22 @@
+# Compiled TypeScript files
+*.js
+*.d.ts
+!jest.config.js
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# AWS CDK context
+cdk.context.json
+
+# Lambda layer dependencies
+layer/
+
+# SAM build artifacts
+.aws-sam/
