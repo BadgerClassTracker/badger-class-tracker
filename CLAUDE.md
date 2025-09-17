@@ -140,3 +140,18 @@ This is a serverless AWS application built with CDK that tracks University of Wi
 3. Backend validates tokens via Cognito authorizer
 4. Search API proxies UW enrollment API (GET → POST transformation)
 5. Event-driven notifications via EventBridge + SES
+
+## Git Commit Guidelines
+
+**IMPORTANT: Always follow these commit message guidelines:**
+
+1. **Follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)** format: `type(scope): description`
+2. **DO NOT include** "Generated with Claude Code" or "Co-Authored-By: Claude" lines
+3. **Group similar changes** into logical commits rather than committing everything at once
+4. **Stage and commit different files separately** when they represent different features/concerns
+
+**Examples:**
+- `feat(backend): add get-terms API endpoint`
+- `fix(frontend): resolve section ordering issue`
+- `style(ui): improve button contrast and spacing`
+- `refactor(api): simplify subscription error handling`

@@ -7,19 +7,24 @@ export interface Subscription {
   termCode: string;
   subjectCode: string;
   courseId: string;
+  catalogNumber?: string;
   classNumber: string;
+  sectionName?: string;
   notifyOn: "OPEN" | "WAITLISTED" | "ANY";
   active: boolean;
   createdAt: string;
   title?: string;
+  subjectDescription?: string;
 }
 
 export interface CreateSubscriptionRequest {
   termCode: string;
   subjectCode: string;
   courseId: string;
+  catalogNumber: string;
   classNumber: number | string;
   notifyOn?: "OPEN" | "WAITLISTED" | "ANY";
+  sectionName?: string;
 }
 
 export interface CreateSubscriptionResponse {
@@ -28,6 +33,7 @@ export interface CreateSubscriptionResponse {
 }
 
 export interface Course {
+  courseId: string;
   subject: {
     subjectCode: string;
     shortDescription: string;
