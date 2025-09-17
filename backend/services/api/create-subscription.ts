@@ -18,7 +18,7 @@ const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const eb = new EventBridgeClient({});
 const TABLE = process.env.TABLE!;
 const BUS = process.env.EVENT_BUS_NAME || "SeatEvents";
-const MAX_SUBS = Number(process.env.MAX_SUBS_PER_USER || 50);
+const MAX_SUBS = Number(process.env.MAX_SUBS_PER_USER || 10);
 
 // Cache for subjects map
 let subjectsMap: Map<string, string> | null = null;
@@ -28,8 +28,10 @@ type Body = {
   termCode: string;
   subjectCode: string;
   courseId: string;
+  catalogNumber?: string;
   classNumber: number | string;
   notifyOn?: "OPEN" | "WAITLISTED" | "ANY";
+  sectionName?: string;
 };
 
 // ==== helpers ================================================================
@@ -71,8 +73,10 @@ export const handler = async (evt: any) => {
     const term = String(b.termCode).trim();
     const subj = String(b.subjectCode).trim();
     const course = String(b.courseId).trim();
+    const catalogNumber = b.catalogNumber ? String(b.catalogNumber).trim() : "";
     const classNbr = String(b.classNumber).trim();
     const notifyOn = (b.notifyOn || "ANY") as Body["notifyOn"];
+    const sectionName = b.sectionName ? String(b.sectionName).trim() : "";
     const nowIso = new Date().toISOString();
 
     // ---------- Simple deduplication (in-memory) ----------
@@ -120,7 +124,9 @@ export const handler = async (evt: any) => {
                   termCode: term,
                   subjectCode: subj,
                   courseId: course,
+                  catalogNumber: catalogNumber,
                   classNumber: classNbr,
+                  sectionName: sectionName,
                   active: true,
                   createdAt: nowIso,
                 },
@@ -141,7 +147,9 @@ export const handler = async (evt: any) => {
                   termCode: term,
                   subjectCode: subj,
                   courseId: course,
+                  catalogNumber: catalogNumber,
                   classNumber: classNbr,
+                  sectionName: sectionName,
                   notifyOn,
                   active: true,
                   createdAt: nowIso,
@@ -373,53 +381,64 @@ async function buildHierarchicalTitle(pkg: any, allPackages: any[]): Promise<str
   const subjectCode = pkg?.subject?.subjectCode ?? "";
   const subj = await getSubjectName(subjectCode, pkg);
   const cat = pkg?.catalogNumber ?? "";
-  
+
   // Build hierarchical title: COMP SCI 200 - LEC 002 - LAB 327
   let title = `${subj} ${cat}`.trim();
-  
-  if (pkg.sections && pkg.sections.length >= 2) {
-    const parentSection = pkg.sections[0];
-    const childSection = pkg.sections[1];
-    
-    const parentType = parentSection.type || "SEC";
-    const parentNumber = parentSection.sectionNumber || "";
-    const childType = childSection.type || "SEC";
-    const childNumber = childSection.sectionNumber || "";
-    
-    // Check if this is a true parent-child relationship (LEC + LAB/DIS) or just multiple independent sections
-    if ((parentType === "LEC" && (childType === "LAB" || childType === "DIS")) ||
-        (parentType === "LEC" && childType === "LEC")) {
+
+  const autoEnrollClasses = pkg.autoEnrollClasses || [];
+  const sections = pkg.sections || [];
+
+  if (autoEnrollClasses.length > 0) {
+    // This package has a parent (LEC + LAB/DIS pattern)
+    const parentId = autoEnrollClasses[0];
+
+    // Find the parent section
+    const parentSection = sections.find((s: any) =>
+      String(s.classUniqueId?.classNumber) === String(parentId)
+    );
+
+    // Find the enrollment section (what students register for)
+    const enrollmentSection = sections.find((s: any) =>
+      String(s.classUniqueId?.classNumber) === String(pkg.enrollmentClassNumber)
+    );
+
+    if (parentSection && enrollmentSection) {
       // Parent-child relationship: COMP SCI 200 - LEC 002 - LAB 327
+      const parentType = parentSection.type || "SEC";
+      const parentNumber = parentSection.sectionNumber || "";
+      const childType = enrollmentSection.type || "SEC";
+      const childNumber = enrollmentSection.sectionNumber || "";
+
       title += ` - ${parentType} ${parentNumber}`;
       if (childNumber) {
         title += ` - ${childType} ${childNumber}`;
       }
-    } else {
-      // Independent sections of same type: just show the specific section we're looking at
-      // For create-subscription, we need to find which section matches the enrollmentClassNumber
-      const classNumber = String(pkg.enrollmentClassNumber || "");
-      const targetSection = pkg.sections.find((s: any) => 
-        String(s.classUniqueId?.classNumber) === String(classNumber)
-      ) || pkg.sections[0];
-      
-      const sectionType = targetSection.type || "SEC";
-      const sectionNumber = targetSection.sectionNumber || "";
-      
+    } else if (enrollmentSection) {
+      // Fallback to just the enrollment section if parent not found
+      const sectionType = enrollmentSection.type || "SEC";
+      const sectionNumber = enrollmentSection.sectionNumber || "";
+
       if (sectionNumber) {
         title += ` - ${sectionType} ${sectionNumber}`;
       }
     }
-  } else if (pkg.sections && pkg.sections.length === 1) {
-    // Single section structure
-    const sec = pkg.sections[0];
-    const sectionType = sec.type || "SEC";
-    const sectionNumber = sec.sectionNumber || "";
-    
-    if (sectionNumber) {
-      title += ` - ${sectionType} ${sectionNumber}`;
+  } else {
+    // This is a standalone course (SEM, standalone LEC, etc.)
+    // Find the enrollment section (what students register for)
+    const enrollmentSection = sections.find((s: any) =>
+      String(s.classUniqueId?.classNumber) === String(pkg.enrollmentClassNumber)
+    ) || sections[0];
+
+    if (enrollmentSection) {
+      const sectionType = enrollmentSection.type || "SEC";
+      const sectionNumber = enrollmentSection.sectionNumber || "";
+
+      if (sectionNumber) {
+        title += ` - ${sectionType} ${sectionNumber}`;
+      }
     }
   }
-  
+
   return title;
 }
 
