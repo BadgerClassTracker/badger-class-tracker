@@ -57,7 +57,15 @@ class ApiClient {
   }
 
   async deleteSubscription(subId: string): Promise<void> {
-    const response = await fetch(`${API_BASE}/subscriptions/${subId}`, {
+    // Get user email from the current session
+    const session = await fetchAuthSession();
+    const userEmail = session.tokens?.idToken?.payload?.email;
+
+    if (!userEmail) {
+      throw new Error('User email not found in session');
+    }
+
+    const response = await fetch(`${API_BASE}/subscriptions/${subId}?email=${encodeURIComponent(String(userEmail))}`, {
       method: 'DELETE',
       headers: await this.getAuthHeaders(),
     });
