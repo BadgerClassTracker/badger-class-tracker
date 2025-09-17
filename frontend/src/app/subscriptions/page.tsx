@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Trash2, Search, RefreshCw } from 'lucide-react';
+import { Trash2, Search, RefreshCw, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
-import { getCurrentUser, signOut } from 'aws-amplify/auth';
+import { getCurrentUser, signOut, fetchAuthSession } from 'aws-amplify/auth';
 import { useRouter } from 'next/navigation';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,7 +26,11 @@ import { api } from '@/lib/api';
 
 export default function SubscriptionsPage() {
   const [user, setUser] = useState<any>(null);
+  const [userEmail, setUserEmail] = useState<string>('');
+  const [userPicture, setUserPicture] = useState<string>('');
+  const [userName, setUserName] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
   const queryClient = useQueryClient();
   const [deletingSubscriptions, setDeletingSubscriptions] = useState<Set<string>>(new Set());
   const [deleteErrors, setDeleteErrors] = useState<Record<string, string>>({});
@@ -34,7 +39,10 @@ export default function SubscriptionsPage() {
   const { data: subscriptions, isLoading: subscriptionsLoading, error, refetch } = useQuery({
     queryKey: ['subscriptions'],
     queryFn: () => api.listSubscriptions(),
-    enabled: !!user
+    enabled: !!user,
+    refetchOnWindowFocus: true, // Refetch when user switches back to this tab
+    refetchInterval: 30000, // Auto-refresh every 30 seconds
+    staleTime: 5000 // Consider data stale after 5 seconds
   });
 
   useEffect(() => {
@@ -42,6 +50,25 @@ export default function SubscriptionsPage() {
       try {
         const currentUser = await getCurrentUser();
         setUser(currentUser);
+
+
+        // Get user data from the session
+        const session = await fetchAuthSession();
+        const idTokenPayload = session.tokens?.idToken?.payload;
+
+        const email = idTokenPayload?.email as string;
+        const picture = idTokenPayload?.picture as string;
+        const givenName = idTokenPayload?.given_name as string;
+        const familyName = idTokenPayload?.family_name as string;
+        const fullName = `${givenName} ${familyName}`.trim();
+
+        if (email) setUserEmail(email);
+        // Remove size parameter for better compatibility
+        if (picture) {
+          const cleanPicture = picture.replace(/=s\d+-c$/, '');
+          setUserPicture(cleanPicture);
+        }
+        if (fullName) setUserName(fullName);
       } catch {
         router.push('/signin');
       } finally {
@@ -51,6 +78,32 @@ export default function SubscriptionsPage() {
 
     checkAuth();
   }, [router]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (showUserDropdown && !target.closest('.relative')) {
+        setShowUserDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showUserDropdown]);
+
+  // Cross-tab synchronization
+  useEffect(() => {
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'subscriptions-updated') {
+        // Another tab updated subscriptions, refetch our data
+        queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [queryClient]);
 
   const handleSignOut = async () => {
     try {
@@ -72,16 +125,19 @@ export default function SubscriptionsPage() {
   const handleDeleteSubscription = async (subId: string) => {
     setDeletingSubscriptions(prev => new Set([...prev, subId]));
     setDeleteErrors(prev => ({ ...prev, [subId]: '' }));
-    
+
     try {
       await api.deleteSubscription(subId);
-      
+
       // Invalidate and refetch subscriptions
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+
+      // Notify other tabs that subscriptions were updated
+      localStorage.setItem('subscriptions-updated', Date.now().toString());
     } catch (err) {
-      setDeleteErrors(prev => ({ 
-        ...prev, 
-        [subId]: err instanceof Error ? err.message : 'Failed to delete subscription' 
+      setDeleteErrors(prev => ({
+        ...prev,
+        [subId]: err instanceof Error ? err.message : 'Failed to delete subscription'
       }));
     } finally {
       setDeletingSubscriptions(prev => {
@@ -132,16 +188,46 @@ export default function SubscriptionsPage() {
                 </Link>
               </Button>
               <div className="flex items-center space-x-3">
-                <span className="text-sm text-gray-600">
-                  {user?.signInDetails?.loginId || user?.username}
-                </span>
-                <Button
-                  onClick={handleSignOut}
-                  variant="secondary"
-                  className="hover:bg-badger-red hover:text-white"
-                >
-                  Sign out
-                </Button>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowUserDropdown(!showUserDropdown)}
+                    className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage
+                        src={userPicture}
+                        alt={userName || userEmail || 'User'}
+                      />
+                      <AvatarFallback className="bg-badger-red text-white text-sm">
+                        {(userName || userEmail || 'U')
+                          .split(' ')
+                          .map(n => n[0])
+                          .join('')
+                          .toUpperCase()
+                          .slice(0, 2)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <ChevronDown className="h-4 w-4 text-gray-500" />
+                  </button>
+
+                  {showUserDropdown && (
+                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+                      <div className="px-4 py-3 border-b border-gray-100">
+                        <div className="text-sm font-medium text-gray-900 mb-1">{userName || 'User'}</div>
+                        <div className="text-xs text-gray-500 break-all">{userEmail || 'Loading...'}</div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setShowUserDropdown(false);
+                          handleSignOut();
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                      >
+                        Sign out
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -221,7 +307,7 @@ export default function SubscriptionsPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Course</TableHead>
-                          <TableHead>Class #</TableHead>
+                          <TableHead>Section</TableHead>
                           <TableHead>Notify When</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Created</TableHead>
@@ -234,19 +320,20 @@ export default function SubscriptionsPage() {
                             <TableCell>
                               <div>
                                 <div className="font-medium">
-                                  {subscription.subjectCode} {subscription.courseId}
+                                  {subscription.subjectDescription || subscription.subjectCode} {subscription.catalogNumber || subscription.courseId}
                                 </div>
-                                {subscription.title && (
-                                  <div className="text-sm text-gray-600">
-                                    {subscription.title}
-                                  </div>
-                                )}
                               </div>
                             </TableCell>
                             <TableCell>
-                              <code className="bg-gray-100 px-2 py-1 rounded text-sm">
-                                {subscription.classNumber}
-                              </code>
+                              {subscription.sectionName ? (
+                                <div className="font-medium">
+                                  {subscription.sectionName}
+                                </div>
+                              ) : (
+                                <div className="text-gray-500 text-sm">
+                                  Unknown Section
+                                </div>
+                              )}
                             </TableCell>
                             <TableCell>
                               {getNotifyOnBadge(subscription.notifyOn)}
@@ -266,11 +353,18 @@ export default function SubscriptionsPage() {
                                   variant="destructive"
                                   onClick={() => handleDeleteSubscription(subscription.subId)}
                                   disabled={deletingSubscriptions.has(subscription.subId)}
+                                  className="bg-red-600 hover:bg-red-700 text-white border-red-600 hover:border-red-700"
                                 >
                                   {deletingSubscriptions.has(subscription.subId) ? (
-                                    <RefreshCw className="h-3 w-3 animate-spin" />
+                                    <>
+                                      <RefreshCw className="h-3 w-3 animate-spin mr-1" />
+                                      Unsubscribing...
+                                    </>
                                   ) : (
-                                    <Trash2 className="h-3 w-3" />
+                                    <>
+                                      <Trash2 className="h-3 w-3 mr-1" />
+                                      Unsubscribe
+                                    </>
                                   )}
                                 </Button>
                                 {deleteErrors[subscription.subId] && (
@@ -290,43 +384,6 @@ export default function SubscriptionsPage() {
             </>
           )}
 
-          {/* Help Text */}
-          <Card className="mt-8">
-            <CardHeader>
-              <CardTitle className="text-lg">How it works</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="text-center">
-                  <div className="w-12 h-12 bg-badger-red text-white rounded-full flex items-center justify-center text-xl font-display font-bold mb-3 mx-auto">
-                    1
-                  </div>
-                  <h3 className="font-medium mb-2">Subscribe to Classes</h3>
-                  <p className="text-sm text-gray-600">
-                    Search for courses and subscribe to specific sections you want to get into.
-                  </p>
-                </div>
-                <div className="text-center">
-                  <div className="w-12 h-12 bg-badger-red text-white rounded-full flex items-center justify-center text-xl font-display font-bold mb-3 mx-auto">
-                    2
-                  </div>
-                  <h3 className="font-medium mb-2">We Monitor</h3>
-                  <p className="text-sm text-gray-600">
-                    Our system continuously checks for seat availability in your subscribed classes.
-                  </p>
-                </div>
-                <div className="text-center">
-                  <div className="w-12 h-12 bg-badger-red text-white rounded-full flex items-center justify-center text-xl font-display font-bold mb-3 mx-auto">
-                    3
-                  </div>
-                  <h3 className="font-medium mb-2">Get Notified</h3>
-                  <p className="text-sm text-gray-600">
-                    Receive instant email alerts when seats become available in your classes.
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </main>
     </div>

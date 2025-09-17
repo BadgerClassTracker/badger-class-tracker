@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Search, Plus, Clock, Users, MapPin, ChevronDown, ChevronUp, CheckCircle, Bell } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Search, Plus, Clock, Users, MapPin, ChevronDown, ChevronUp, CheckCircle, Bell, Trash2 } from 'lucide-react';
 import Link from 'next/link';
-import { getCurrentUser, signOut } from 'aws-amplify/auth';
+import { getCurrentUser, signOut, fetchAuthSession } from 'aws-amplify/auth';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useRouter } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
@@ -19,7 +20,11 @@ import type { Course, Section, CreateSubscriptionRequest } from '@shared/types';
 
 export default function SearchPage() {
   const [user, setUser] = useState<any>(null);
+  const [userEmail, setUserEmail] = useState<string>('');
+  const [userPicture, setUserPicture] = useState<string>('');
+  const [userName, setUserName] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTerm, setSelectedTerm] = useState('0000'); // Default to all terms
   const [expandedCourses, setExpandedCourses] = useState<Set<string>>(new Set());
@@ -29,6 +34,7 @@ export default function SearchPage() {
   const [loadingSections, setLoadingSections] = useState<Set<string>>(new Set());
   const [expandedLectures, setExpandedLectures] = useState<Set<string>>(new Set());
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const { data: searchResults, isLoading: searchLoading, error } = useQuery({
     queryKey: ['searchCourses', searchQuery, selectedTerm],
@@ -42,11 +48,38 @@ export default function SearchPage() {
     enabled: !!user
   });
 
+  const { data: userSubscriptions, isLoading: subscriptionsLoading } = useQuery({
+    queryKey: ['subscriptions'],
+    queryFn: () => api.listSubscriptions(),
+    enabled: !!user,
+    refetchOnWindowFocus: true, // Refetch when user switches back to this tab
+    refetchInterval: 30000, // Auto-refresh every 30 seconds
+    staleTime: 5000 // Consider data stale after 5 seconds
+  });
+
   useEffect(() => {
     const checkAuth = async () => {
       try {
         const currentUser = await getCurrentUser();
         setUser(currentUser);
+
+        // Get user data from the session
+        const session = await fetchAuthSession();
+        const idTokenPayload = session.tokens?.idToken?.payload;
+
+        const email = idTokenPayload?.email as string;
+        const picture = idTokenPayload?.picture as string;
+        const givenName = idTokenPayload?.given_name as string;
+        const familyName = idTokenPayload?.family_name as string;
+        const fullName = `${givenName} ${familyName}`.trim();
+
+        if (email) setUserEmail(email);
+        // Remove size parameter for better compatibility
+        if (picture) {
+          const cleanPicture = picture.replace(/=s\d+-c$/, '');
+          setUserPicture(cleanPicture);
+        }
+        if (fullName) setUserName(fullName);
       } catch {
         router.push('/signin');
       } finally {
@@ -57,6 +90,45 @@ export default function SearchPage() {
     checkAuth();
   }, [router]);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (showUserDropdown && !target.closest('.relative')) {
+        setShowUserDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showUserDropdown]);
+
+  // Cross-tab synchronization
+  useEffect(() => {
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'subscriptions-updated') {
+        // Another tab updated subscriptions, refetch our data
+        queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [queryClient]);
+
+  // Cross-tab synchronization
+  useEffect(() => {
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'subscriptions-updated') {
+        // Another tab updated subscriptions, refetch our data
+        queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [queryClient]);
+
   const handleSignOut = async () => {
     try {
       await signOut();
@@ -64,6 +136,37 @@ export default function SearchPage() {
     } catch (error) {
       console.error('Error signing out:', error);
     }
+  };
+
+  // Helper function to check if user is subscribed to a section
+  const isSubscribedToSection = (classNumber: string) => {
+    if (!userSubscriptions) {
+      return false;
+    }
+
+    // Use String() to normalize and trim to handle any encoding issues
+    const normalizedClassNumber = String(classNumber).trim();
+
+    const isSubscribed = userSubscriptions.some(sub => {
+      const normalizedSubClassNumber = String(sub.classNumber).trim();
+      const classMatch = normalizedSubClassNumber === normalizedClassNumber;
+      const isActive = Boolean(sub.active);
+      return classMatch && isActive;
+    });
+
+    return isSubscribed;
+  };
+
+  // Helper function to get subscription ID for a section
+  const getSubscriptionId = (classNumber: string) => {
+    if (!userSubscriptions) return null;
+
+    const normalizedClassNumber = String(classNumber).trim();
+    const subscription = userSubscriptions.find(sub => {
+      const normalizedSubClassNumber = String(sub.classNumber).trim();
+      return normalizedSubClassNumber === normalizedClassNumber && Boolean(sub.active);
+    });
+    return subscription?.subId || null;
   };
 
   if (isLoading) {
@@ -87,7 +190,7 @@ export default function SearchPage() {
 
         try {
           const sectionsData = await api.searchCourses({
-            term: course.termCode,
+            term: course.subject.termCode,
             subject: course.subject?.subjectCode,
             courseId: course.courseId
           });
@@ -97,14 +200,14 @@ export default function SearchPage() {
           if (Array.isArray(sectionsData)) {
             // Group enrollment packages by their parent section (auto-enroll class)
             const parentGroups = new Map();
-            const standalonePackages = [];
+            const standalonePackages: any[] = [];
 
             sectionsData.forEach(pkg => {
               const autoEnrollClasses = pkg.autoEnrollClasses || [];
               const sections = pkg.sections || [];
 
               // Transform the enrollment section (what students register for)
-              const enrollmentSection = sections.find(s => s.classUniqueId.classNumber.toString() === pkg.enrollmentClassNumber.toString());
+              const enrollmentSection = sections.find((s: any) => s.classUniqueId.classNumber.toString() === pkg.enrollmentClassNumber.toString());
               if (!enrollmentSection) return;
 
               const transformedEnrollmentSection = {
@@ -120,11 +223,11 @@ export default function SearchPage() {
                 packageEnrollmentStatus: {
                   status: enrollmentSection.enrollmentStatus?.openSeats > 0 ? "OPEN" : "CLOSED"
                 },
-                instructors: enrollmentSection.instructors?.map(inst => ({
+                instructors: enrollmentSection.instructors?.map((inst: any) => ({
                   name: `${inst.name?.first || ''} ${inst.name?.last || ''}`.trim(),
                   email: inst.email
                 })) || [],
-                meetings: enrollmentSection.classMeetings?.filter(meeting => meeting.meetingType === 'CLASS')?.map(meeting => ({
+                meetings: enrollmentSection.classMeetings?.filter((meeting: any) => meeting.meetingType === 'CLASS')?.map((meeting: any) => ({
                   dayPattern: meeting.meetingDays || '',
                   startTime: new Date(meeting.meetingTimeStart).toLocaleTimeString('en-US', {
                     hour: 'numeric',
@@ -150,7 +253,7 @@ export default function SearchPage() {
 
                 if (!parentGroups.has(parentId)) {
                   // Find and store the parent section
-                  const parentSection = sections.find(s => s.classUniqueId.classNumber.toString() === parentId.toString());
+                  const parentSection = sections.find((s: any) => s.classUniqueId.classNumber.toString() === parentId.toString());
                   if (parentSection) {
                     const transformedParentSection = {
                       classUniqueId: parentSection.classUniqueId,
@@ -165,11 +268,11 @@ export default function SearchPage() {
                       packageEnrollmentStatus: {
                         status: parentSection.enrollmentStatus?.openSeats > 0 ? "OPEN" : "CLOSED"
                       },
-                      instructors: parentSection.instructors?.map(inst => ({
+                      instructors: parentSection.instructors?.map((inst: any) => ({
                         name: `${inst.name?.first || ''} ${inst.name?.last || ''}`.trim(),
                         email: inst.email
                       })) || [],
-                      meetings: parentSection.classMeetings?.filter(meeting => meeting.meetingType === 'CLASS')?.map(meeting => ({
+                      meetings: parentSection.classMeetings?.filter((meeting: any) => meeting.meetingType === 'CLASS')?.map((meeting: any) => ({
                         dayPattern: meeting.meetingDays || '',
                         startTime: new Date(meeting.meetingTimeStart).toLocaleTimeString('en-US', {
                           hour: 'numeric',
@@ -244,31 +347,46 @@ export default function SearchPage() {
 
   const handleSubscribe = async (section: Section, course: Course) => {
     const sectionKey = section.classUniqueId.classNumber;
-    
+    const isSubscribed = isSubscribedToSection(sectionKey);
+
     setSubscriptionStates(prev => ({ ...prev, [sectionKey]: 'loading' }));
     setSubscriptionErrors(prev => ({ ...prev, [sectionKey]: '' }));
-    
+
     try {
-      const request: CreateSubscriptionRequest = {
-        termCode: section.classUniqueId.termCode,
-        subjectCode: course.subject.subjectCode,
-        courseId: course.catalogNumber,
-        classNumber: section.classUniqueId.classNumber,
-        notifyOn: 'OPEN'
-      };
-      
-      await api.createSubscription(request);
-      setSubscriptionStates(prev => ({ ...prev, [sectionKey]: 'success' }));
-      
-      // Clear success state after 3 seconds
-      setTimeout(() => {
-        setSubscriptionStates(prev => ({ ...prev, [sectionKey]: 'idle' }));
-      }, 3000);
+      if (isSubscribed) {
+        // Unsubscribe
+        const subscriptionId = getSubscriptionId(sectionKey);
+        if (subscriptionId) {
+          await api.deleteSubscription(subscriptionId);
+        }
+      } else {
+        // Subscribe
+        const request: CreateSubscriptionRequest = {
+          termCode: section.classUniqueId.termCode,
+          subjectCode: course.subject.subjectCode,
+          courseId: course.courseId,
+          catalogNumber: course.catalogNumber,
+          classNumber: section.classUniqueId.classNumber,
+          notifyOn: 'OPEN',
+          sectionName: `${section.type} ${section.sectionNumber}`
+        };
+
+        await api.createSubscription(request);
+      }
+
+      // Invalidate and refetch subscriptions to update the UI
+      await queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+
+      // Notify other tabs that subscriptions were updated
+      localStorage.setItem('subscriptions-updated', Date.now().toString());
+
+      // Clear local state - let the actual subscription data drive the UI
+      setSubscriptionStates(prev => ({ ...prev, [sectionKey]: 'idle' }));
     } catch (err) {
       setSubscriptionStates(prev => ({ ...prev, [sectionKey]: 'error' }));
-      setSubscriptionErrors(prev => ({ 
-        ...prev, 
-        [sectionKey]: err instanceof Error ? err.message : 'Failed to create subscription' 
+      setSubscriptionErrors(prev => ({
+        ...prev,
+        [sectionKey]: err instanceof Error ? err.message : `Failed to ${isSubscribed ? 'unsubscribe' : 'subscribe'}`
       }));
     }
   };
@@ -334,16 +452,20 @@ export default function SearchPage() {
     const state = (subscriptionStates as any)[sectionKey] || 'idle';
     const error = (subscriptionErrors as any)[sectionKey];
 
-    if (state === 'success') {
+    // Simple: just check if subscribed based on the actual data
+    const isSubscribed = isSubscribedToSection(sectionKey);
+
+    // Show loading state while subscriptions are loading
+    if (subscriptionsLoading) {
       return (
         <Button
           size="sm"
           variant="outline"
           disabled
-          className="border-green-500 text-green-600 bg-green-50 hover:bg-green-50"
+          className="border-gray-300 text-gray-500"
         >
-          <CheckCircle className="h-3 w-3 mr-1" />
-          Subscribed
+          <div className="animate-spin rounded-full h-3 w-3 border border-current border-t-transparent mr-1"></div>
+          Loading...
         </Button>
       );
     }
@@ -353,19 +475,31 @@ export default function SearchPage() {
         <Button
           size="sm"
           variant="outline"
-          className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:border-blue-600"
+          className={isSubscribed
+            ? "border-red-500 text-red-600 hover:bg-red-50 hover:border-red-600"
+            : "border-blue-500 text-blue-600 hover:bg-blue-50 hover:border-blue-600"
+          }
           onClick={() => handleSubscribe(section, course)}
           disabled={state === 'loading'}
         >
           {state === 'loading' ? (
             <>
               <div className="animate-spin rounded-full h-3 w-3 border border-current border-t-transparent mr-1"></div>
-              Subscribing...
+              {isSubscribed ? 'Unsubscribing...' : 'Subscribing...'}
             </>
           ) : (
             <>
-              <Bell className="h-3 w-3 mr-1" />
-              Subscribe
+              {isSubscribed ? (
+                <>
+                  <Trash2 className="h-3 w-3 mr-1" />
+                  Unsubscribe
+                </>
+              ) : (
+                <>
+                  <Bell className="h-3 w-3 mr-1" />
+                  Subscribe
+                </>
+              )}
             </>
           )}
         </Button>
@@ -392,16 +526,46 @@ export default function SearchPage() {
                 <Link href="/subscriptions">My Subscriptions</Link>
               </Button>
               <div className="flex items-center space-x-3">
-                <span className="text-sm text-gray-600">
-                  {user?.signInDetails?.loginId || user?.username}
-                </span>
-                <Button
-                  onClick={handleSignOut}
-                  variant="secondary"
-                  className="hover:bg-badger-red hover:text-white"
-                >
-                  Sign out
-                </Button>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowUserDropdown(!showUserDropdown)}
+                    className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage
+                        src={userPicture}
+                        alt={userName || userEmail || 'User'}
+                      />
+                      <AvatarFallback className="bg-badger-red text-white text-sm">
+                        {(userName || userEmail || 'U')
+                          .split(' ')
+                          .map(n => n[0])
+                          .join('')
+                          .toUpperCase()
+                          .slice(0, 2)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <ChevronDown className="h-4 w-4 text-gray-500" />
+                  </button>
+
+                  {showUserDropdown && (
+                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+                      <div className="px-4 py-3 border-b border-gray-100">
+                        <div className="text-sm font-medium text-gray-900 mb-1">{userName || 'User'}</div>
+                        <div className="text-xs text-gray-500 break-all">{userEmail || 'Loading...'}</div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setShowUserDropdown(false);
+                          handleSignOut();
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                      >
+                        Sign out
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -496,13 +660,13 @@ export default function SearchPage() {
                               <span>{course.subject?.shortDescription || course.subject?.subjectCode} {course.catalogNumber}</span>
                               <span className="text-sm font-normal text-gray-600">
                                 ({(() => {
-                                  const credits = course.creditRange || course.credits;
+                                  const credits = (course as any).creditRange || course.credits || '0';
                                   return credits === '1' ? '1 credit' : `${credits} credits`;
                                 })()})
                               </span>
                               {selectedTerm === '0000' && (
                                 <Badge variant="outline" className="text-xs">
-                                  {getTermLabel(course.termCode)}
+                                  {getTermLabel(course.subject.termCode)}
                                 </Badge>
                               )}
                             </div>
@@ -546,7 +710,7 @@ export default function SearchPage() {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {courseSections[courseKey].map((group, groupIndex) => {
+                                  {courseSections[courseKey].map((group: any, groupIndex: number) => {
                                     const lectureId = group.lecture?.classUniqueId.classNumber;
                                     const isExpanded = lectureId && expandedLectures.has(lectureId);
                                     const hasLabs = (group.labs || []).length > 0;
@@ -589,7 +753,7 @@ export default function SearchPage() {
                                           </td>
                                           <td className="py-3 px-3">
                                             <div className="space-y-1">
-                                              {group.lecture.meetings.map((meeting, idx) => (
+                                              {group.lecture.meetings.map((meeting: any, idx: number) => (
                                                 <div key={idx} className="text-sm">
                                                   <div className="font-medium">
                                                     {meeting.dayPattern} {meeting.startTime} - {meeting.endTime}
@@ -606,7 +770,7 @@ export default function SearchPage() {
                                           <td className="py-3 px-3">
                                             <div className="text-sm">
                                               {group.lecture.instructors.length > 0
-                                                ? group.lecture.instructors.map(i => i.name).join(', ')
+                                                ? group.lecture.instructors.map((i: any) => i.name).join(', ')
                                                 : 'TBA'
                                               }
                                             </div>
@@ -614,7 +778,7 @@ export default function SearchPage() {
                                           <td className="py-3 px-3">
                                             <div className="text-sm">
                                               {(() => {
-                                                const credits = course.creditRange || course.credits;
+                                                const credits = (course as any).creditRange || course.credits || '0';
                                                 return credits === '1' ? '1.00 Cr' : `${credits}.00 Cr`;
                                               })()}
                                             </div>
@@ -647,7 +811,7 @@ export default function SearchPage() {
                                         </tr>
                                       ),
                                       // Lab rows (only show when expanded)
-                                      ...(isExpanded ? (group.labs || []).map((section, labIndex) => (
+                                      ...(isExpanded ? (group.labs || []).map((section: any, labIndex: number) => (
                                         <tr
                                           key={`lab-${section.classUniqueId.classNumber}-${groupIndex}-${labIndex}`}
                                           className="border-b border-gray-100 hover:bg-blue-50 bg-gray-50"
@@ -664,7 +828,7 @@ export default function SearchPage() {
                                           </td>
                                           <td className="py-3 px-3">
                                             <div className="space-y-1">
-                                              {section.meetings.map((meeting, idx) => (
+                                              {section.meetings.map((meeting: any, idx: number) => (
                                                 <div key={idx} className="text-sm">
                                                   <div className="font-medium">
                                                     {meeting.dayPattern} {meeting.startTime} - {meeting.endTime}
@@ -681,7 +845,7 @@ export default function SearchPage() {
                                           <td className="py-3 px-3">
                                             <div className="text-sm">
                                               {section.instructors.length > 0
-                                                ? section.instructors.map(i => i.name).join(', ')
+                                                ? section.instructors.map((i: any) => i.name).join(', ')
                                                 : 'TBA'
                                               }
                                             </div>
@@ -689,7 +853,7 @@ export default function SearchPage() {
                                           <td className="py-3 px-3">
                                             <div className="text-sm">
                                               {(() => {
-                                                const credits = course.creditRange || course.credits;
+                                                const credits = (course as any).creditRange || course.credits || '0';
                                                 return credits === '1' ? '1.00 Cr' : `${credits}.00 Cr`;
                                               })()}
                                             </div>
