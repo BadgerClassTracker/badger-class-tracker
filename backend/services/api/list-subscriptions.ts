@@ -5,6 +5,9 @@ import { DynamoDBDocumentClient, QueryCommand } from "@aws-sdk/lib-dynamodb";
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const TABLE = process.env.TABLE!;
 
+// Cache for subjects map
+let subjectsMap: Map<string, string> | null = null;
+
 /**
  * REST API (API Gateway v1) with Cognito User Pools Authorizer:
  * user claims live at event.requestContext.authorizer.claims
@@ -29,18 +32,28 @@ export const handler = async (evt: any) => {
     );
 
     // Only return SUB# items (skip DEDUP/WATCH/etc.)
-    const subs = (res.Items ?? [])
-      .filter((it: any) => String(it.SK || "").startsWith("SUB#"))
-      .map((it: any) => ({
-        subId: it.subId,
-        termCode: it.termCode,
-        subjectCode: it.subjectCode,
-        courseId: it.courseId,
-        classNumber: it.classNumber,
-        notifyOn: it.notifyOn,
-        active: it.active !== false,
-        createdAt: it.createdAt,
-      }));
+    const subItems = (res.Items ?? [])
+      .filter((it: any) => String(it.SK || "").startsWith("SUB#"));
+
+    // Enhance each subscription with subject description
+    const subs = await Promise.all(
+      subItems.map(async (it: any) => {
+        const subjectDescription = await getSubjectName(it.subjectCode || "");
+        return {
+          subId: it.subId,
+          termCode: it.termCode,
+          subjectCode: it.subjectCode,
+          courseId: it.courseId,
+          catalogNumber: it.catalogNumber,
+          classNumber: it.classNumber,
+          sectionName: it.sectionName,
+          notifyOn: it.notifyOn,
+          active: it.active !== false,
+          createdAt: it.createdAt,
+          subjectDescription,
+        };
+      })
+    );
 
     return json(200, { subscriptions: subs });
   } catch (e: any) {
@@ -59,10 +72,44 @@ function getAuthEmail(evt: any): string | null {
   return email ? String(email).toLowerCase().trim() : null;
 }
 
+async function getSubjectName(subjectCode: string): Promise<string> {
+  // First try the subjects map cache
+  if (!subjectsMap) {
+    try {
+      const response = await fetch("https://public.enroll.wisc.edu/api/search/v1/subjectsMap/0000", {
+        headers: {
+          "accept": "application/json",
+          "user-agent": "badger-class-tracker/1.0 (educational use)",
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        subjectsMap = new Map(Object.entries(data));
+        console.log(`Loaded subjects map with ${subjectsMap.size} subjects`);
+      } else {
+        console.warn("Failed to fetch subjects map", response.status);
+        subjectsMap = new Map(); // empty map to avoid repeated failed requests
+      }
+    } catch (e) {
+      console.warn("Error fetching subjects map", e);
+      subjectsMap = new Map();
+    }
+  }
+
+  // Try subjects map
+  const mapName = subjectsMap.get(subjectCode);
+  if (mapName) {
+    return mapName;
+  }
+
+  // Fallback to subject code if not found
+  return subjectCode;
+}
+
 function json(statusCode: number, body: any) {
   return {
     statusCode,
-    headers: { 
+    headers: {
       "content-type": "application/json",
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Requested-With,x-api-key",

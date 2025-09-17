@@ -11,13 +11,22 @@ const TABLE = process.env.TABLE!;
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 export const handler = async (evt: any) => {
+  console.log("delete-subscription:start", {
+    pathParameters: evt.pathParameters,
+    queryStringParameters: evt.queryStringParameters
+  });
+
   const id = evt.pathParameters?.id;
   const email = String(evt.queryStringParameters?.email || "")
     .toLowerCase()
     .trim();
+
   if (!id || !email) {
+    console.log("delete-subscription:missing-params", { id, email });
     return json(400, { error: "id path param and email query param required" });
   }
+
+  console.log("delete-subscription:params", { id, email });
 
   // 1) Load sub to compute keys
   const subKey = { PK: `USER#${email}`, SK: `SUB#${id}` };
@@ -28,7 +37,10 @@ export const handler = async (evt: any) => {
       ConsistentRead: true,
     })
   );
-  if (!Item) return json(404, { error: "not_found" });
+  if (!Item) {
+    console.log("delete-subscription:not-found", { subKey });
+    return json(404, { error: "not_found" });
+  }
 
   const term: string = Item.termCode;
   const subj: string = Item.subjectCode;
@@ -94,12 +106,14 @@ export const handler = async (evt: any) => {
     );
   } catch (e: any) {
     const name = e?.name || "";
+    console.log("delete-subscription:transaction-error", { name, error: e?.message });
     if (
       name === "TransactionCanceledException" ||
       name === "ConditionalCheckFailedException"
     ) {
       // Covers double-delete races, missing count rows, already-zero counters, etc.
       // Your current behavior treats these as idempotent:
+      console.log("delete-subscription:idempotent-success", { id, email });
       return json(204, "");
     }
     console.error("delete-subscription-txn-error", e);
@@ -113,6 +127,7 @@ export const handler = async (evt: any) => {
   // 4) Optional: keep eager cleanup or let Janitor handle it later
   await cleanupWatchIfZero(watchPk, watchSk);
 
+  console.log("delete-subscription:success", { id, email });
   return json(204, "");
 };
 

@@ -206,7 +206,6 @@ export class BadgerClassTrackerStack extends Stack {
     attachRetention("CreateSubscriptionFn", createSub);
     table.grantReadWriteData(createSub);
     bus.grantPutEventsTo(createSub);
-    createSub.addEnvironment("MAX_SUBS_PER_USER", "3");
 
     const listSubs = nodeFn(
       "ListSubscriptionsFn",
