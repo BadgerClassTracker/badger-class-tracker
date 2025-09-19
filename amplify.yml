@@ -19,3 +19,11 @@ applications:
       env:
         variables:
           NODE_OPTIONS: '--max-old-space-size=4096'
+    backend:
+      phases:
+        preBuild:
+          commands:
+            - echo "Using Node.js 20 for AWS Amplify deployment"
+    runtime:
+      nodejs:
+        version: 20

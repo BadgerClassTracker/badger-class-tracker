@@ -68,7 +68,7 @@ export default function HomePage() {
           <p className="text-xl text-text-medium-gray mb-8 max-w-3xl mx-auto">
             Get instant email notifications when seats open up in your favorite courses.
             From <span className="font-semibold text-badger-red">COMP SCI 300</span> to <span className="font-semibold text-badger-red">BIOCHEM 501</span>,
-            we'll help you get into the classes you need.
+            we&apos;ll help you get into the classes you need.
           </p>
 
           <div className="space-y-4 sm:space-y-0 sm:space-x-4 sm:flex sm:justify-center">
