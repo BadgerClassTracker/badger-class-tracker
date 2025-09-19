@@ -22,7 +22,8 @@ const amplifyConfig = {
           scopes: ['openid', 'email', 'profile'] as const,
           redirectSignIn: [getRedirectUrl()],
           redirectSignOut: [getRedirectUrl()],
-          responseType: 'code' as const
+          responseType: 'code' as const,
+          providers: ['Google'] as const
         }
       }
     }

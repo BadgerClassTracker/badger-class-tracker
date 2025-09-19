@@ -35,7 +35,9 @@ class ApiClient {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || error.message || 'Failed to create subscription');
+      const err = new Error(error.error || error.message || 'Failed to create subscription') as Error & { status?: number };
+      err.status = response.status;
+      throw err;
     }
 
     return response.json();
@@ -49,7 +51,9 @@ class ApiClient {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || error.message || 'Failed to list subscriptions');
+      const err = new Error(error.error || error.message || 'Failed to list subscriptions') as Error & { status?: number };
+      err.status = response.status;
+      throw err;
     }
 
     const data = await response.json();
@@ -72,7 +76,9 @@ class ApiClient {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || error.message || 'Failed to delete subscription');
+      const err = new Error(error.error || error.message || 'Failed to delete subscription') as Error & { status?: number };
+      err.status = response.status;
+      throw err;
     }
   }
 

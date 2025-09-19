@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 export default function SignIn() {
     const handleSignIn = async () => {
         try {
+            // Use Amplify's built-in OAuth flow (works with classic Hosted UI)
             await signInWithRedirect({ provider: 'Google' });
         } catch (error) {
             console.error('Error signing in:', error);
@@ -13,7 +14,7 @@ export default function SignIn() {
     };
 
     return (
-        <Button 
+        <Button
             onClick={handleSignIn}
             variant="outline"
             className="inline-flex items-center hover:border-badger-red hover:text-badger-red"
