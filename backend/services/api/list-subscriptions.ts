@@ -35,10 +35,40 @@ export const handler = async (evt: any) => {
     const subItems = (res.Items ?? [])
       .filter((it: any) => String(it.SK || "").startsWith("SUB#"));
 
-    // Enhance each subscription with subject description
+    // Enhance each subscription with subject description and status info
     const subs = await Promise.all(
       subItems.map(async (it: any) => {
         const subjectDescription = await getSubjectName(it.subjectCode || "");
+
+        // Fetch the status from STATE item
+        let status = null;
+        let scannedAt = null;
+
+        if (it.termCode && it.classNumber) {
+          try {
+            const stateKey = `SEC#${it.termCode}#${it.classNumber}`;
+            const stateRes = await ddb.send(
+              new QueryCommand({
+                TableName: TABLE,
+                KeyConditionExpression: "PK = :pk AND SK = :sk",
+                ExpressionAttributeValues: {
+                  ":pk": stateKey,
+                  ":sk": "STATE"
+                },
+                ConsistentRead: false,
+              })
+            );
+
+            if (stateRes.Items && stateRes.Items.length > 0) {
+              const stateItem = stateRes.Items[0];
+              status = stateItem.status;
+              scannedAt = stateItem.scannedAt;
+            }
+          } catch (e) {
+            console.warn(`Failed to fetch state for ${it.classNumber}:`, e);
+          }
+        }
+
         return {
           subId: it.subId,
           termCode: it.termCode,
@@ -51,6 +81,8 @@ export const handler = async (evt: any) => {
           active: it.active !== false,
           createdAt: it.createdAt,
           subjectDescription,
+          lastStatus: status,
+          lastChecked: scannedAt,
         };
       })
     );

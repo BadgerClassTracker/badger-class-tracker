@@ -15,6 +15,8 @@ export interface Subscription {
   createdAt: string;
   title?: string;
   subjectDescription?: string;
+  lastStatus?: string;
+  lastChecked?: number;
 }
 
 export interface CreateSubscriptionRequest {
