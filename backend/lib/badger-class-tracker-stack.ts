@@ -42,7 +42,7 @@ export class BadgerClassTrackerStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY, // dev only; change to RETAIN in prod
     });
 
-    // Google identity provider (optional - only if credentials are provided)
+    // Google identity provider with picture attribute
     let googleProvider;
     const googleClientId = process.env.GOOGLE_CLIENT_ID;
     const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -67,6 +67,7 @@ export class BadgerClassTrackerStack extends Stack {
             email: cognito.ProviderAttribute.GOOGLE_EMAIL,
             givenName: cognito.ProviderAttribute.GOOGLE_GIVEN_NAME,
             familyName: cognito.ProviderAttribute.GOOGLE_FAMILY_NAME,
+            profilePicture: cognito.ProviderAttribute.GOOGLE_PICTURE,
           },
         }
       );
@@ -84,8 +85,14 @@ export class BadgerClassTrackerStack extends Stack {
           cognito.OAuthScope.EMAIL,
           cognito.OAuthScope.PROFILE,
         ],
-        callbackUrls: ["http://localhost:3000/"], // adjust later for prod
-        logoutUrls: ["http://localhost:3000/"],
+        callbackUrls: [
+          "http://localhost:3000/",
+          ...(process.env.PRODUCTION_DOMAIN ? [process.env.PRODUCTION_DOMAIN] : [])
+        ],
+        logoutUrls: [
+          "http://localhost:3000/",
+          ...(process.env.PRODUCTION_DOMAIN ? [process.env.PRODUCTION_DOMAIN] : [])
+        ],
       },
       preventUserExistenceErrors: true,
       authFlows: {
@@ -194,6 +201,25 @@ export class BadgerClassTrackerStack extends Stack {
         },
       },
       // Removed defaultCorsPreflightOptions to avoid conflicts with explicit OPTIONS methods
+    });
+
+    // Add gateway responses for CORS on authorization failures
+    api.addGatewayResponse("Unauthorized", {
+      type: apigw.ResponseType.UNAUTHORIZED,
+      responseHeaders: {
+        "Access-Control-Allow-Origin": "'*'",
+        "Access-Control-Allow-Headers": "'Content-Type,Authorization,X-Requested-With,x-api-key'",
+        "Access-Control-Allow-Methods": "'OPTIONS,GET,POST,DELETE,PUT,PATCH'",
+      },
+    });
+
+    api.addGatewayResponse("AccessDenied", {
+      type: apigw.ResponseType.ACCESS_DENIED,
+      responseHeaders: {
+        "Access-Control-Allow-Origin": "'*'",
+        "Access-Control-Allow-Headers": "'Content-Type,Authorization,X-Requested-With,x-api-key'",
+        "Access-Control-Allow-Methods": "'OPTIONS,GET,POST,DELETE,PUT,PATCH'",
+      },
     });
 
     // Create Subscription
