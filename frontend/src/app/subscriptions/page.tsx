@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { getCurrentUser, signOut, fetchAuthSession } from 'aws-amplify/auth';
 import { useRouter } from 'next/navigation';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import Logo from '../../components/logo';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,6 +35,7 @@ export default function SubscriptionsPage() {
   const queryClient = useQueryClient();
   const [deletingSubscriptions, setDeletingSubscriptions] = useState<Set<string>>(new Set());
   const [deleteErrors, setDeleteErrors] = useState<Record<string, string>>({});
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const router = useRouter();
 
   const { data: subscriptions, isLoading: subscriptionsLoading, error, refetch } = useQuery({
@@ -114,6 +116,18 @@ export default function SubscriptionsPage() {
     }
   };
 
+  const handleManualRefresh = async () => {
+    setIsManualRefreshing(true);
+
+    // Ensure minimum 600ms loading time for visual feedback
+    const [, ] = await Promise.all([
+      refetch(),
+      new Promise(resolve => setTimeout(resolve, 600))
+    ]);
+
+    setIsManualRefreshing(false);
+  };
+
   if (isLoading) {
     return <div>Loading...</div>;
   }
@@ -148,16 +162,20 @@ export default function SubscriptionsPage() {
     }
   };
 
-  const getNotifyOnBadge = (notifyOn: string) => {
-    switch (notifyOn) {
+  const getSeatStatusBadge = (lastStatus?: string) => {
+    if (!lastStatus) {
+      return <Badge variant="outline">Unknown</Badge>;
+    }
+
+    switch (lastStatus.toUpperCase()) {
       case 'OPEN':
-        return <Badge className="bg-green-500">Open Seats</Badge>;
+        return <Badge className="bg-green-500">Open</Badge>;
       case 'WAITLISTED':
-        return <Badge variant="secondary">Waitlisted</Badge>;
-      case 'ANY':
-        return <Badge className="bg-blue-500">Any Change</Badge>;
+        return <Badge className="bg-yellow-500">Waitlisted</Badge>;
+      case 'CLOSED':
+        return <Badge className="bg-red-500">Closed</Badge>;
       default:
-        return <Badge variant="outline">{notifyOn}</Badge>;
+        return <Badge variant="outline">{lastStatus}</Badge>;
     }
   };
 
@@ -175,11 +193,7 @@ export default function SubscriptionsPage() {
       <header className="bg-white shadow-sm border-b border-light-gray">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
-            <Link href="/search" className="flex items-center">
-              <h1 className="text-3xl font-display font-bold text-text-dark-gray">
-                🦡 Badger Class Tracker
-              </h1>
-            </Link>
+            <Logo size="md" />
             <div className="flex items-center space-x-4">
               <Button asChild variant="outline">
                 <Link href="/search">
@@ -248,12 +262,12 @@ export default function SubscriptionsPage() {
               </p>
             </div>
             <Button
-              onClick={() => refetch()}
+              onClick={handleManualRefresh}
               variant="outline"
-              disabled={isLoading}
+              disabled={isManualRefreshing}
             >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Refresh
+              <RefreshCw className={`h-4 w-4 mr-2 ${isManualRefreshing ? 'animate-spin' : ''}`} />
+              {isManualRefreshing ? 'Refreshing...' : 'Refresh'}
             </Button>
           </div>
 
@@ -308,8 +322,8 @@ export default function SubscriptionsPage() {
                         <TableRow>
                           <TableHead>Course</TableHead>
                           <TableHead>Section</TableHead>
-                          <TableHead>Notify When</TableHead>
                           <TableHead>Status</TableHead>
+                          <TableHead>Last Checked</TableHead>
                           <TableHead>Created</TableHead>
                           <TableHead className="w-24">Actions</TableHead>
                         </TableRow>
@@ -336,10 +350,20 @@ export default function SubscriptionsPage() {
                               )}
                             </TableCell>
                             <TableCell>
-                              {getNotifyOnBadge(subscription.notifyOn)}
+                              {getSeatStatusBadge(subscription.lastStatus)}
                             </TableCell>
                             <TableCell>
-                              {getStatusBadge(subscription.active)}
+                              <div className="text-sm text-gray-600">
+                                {subscription.lastChecked
+                                  ? new Date(Number(subscription.lastChecked)).toLocaleString('en-US', {
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: 'numeric',
+                                      minute: '2-digit'
+                                    })
+                                  : 'Never'
+                                }
+                              </div>
                             </TableCell>
                             <TableCell>
                               <div className="text-sm text-gray-600">
