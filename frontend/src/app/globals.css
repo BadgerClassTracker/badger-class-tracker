@@ -8,34 +8,47 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* UW-Madison Primary Colors */
-  --badger-red: #C5050C;
+  /* Modern UW-Madison Color Palette */
+  --badger-red: #DC2626;
+  --badger-red-light: #F87171;
+  --badger-red-dark: #B91C1C;
   --white: #FFFFFF;
 
-  /* UW-Madison Secondary Colors */
-  --dark-red: #9B0000;
-  --light-gray: #F7F7F7;
-  --text-dark-gray: #333333;
-  --link-blue: #0479A8;
+  /* Enhanced Secondary Colors */
+  --dark-red: #991B1B;
+  --light-gray: #F8FAFC;
+  --medium-gray: #E2E8F0;
+  --text-dark-gray: #1E293B;
+  --text-medium-gray: #475569;
+  --link-blue: #2563EB;
+  --link-blue-light: #3B82F6;
 
-  /* Theme variables */
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: 210 20% 98%;
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /* Modern Accent Colors */
+  --success-green: #10B981;
+  --success-green-light: #34D399;
+  --warning-amber: #F59E0B;
+  --info-sky: #0EA5E9;
+
+  /* Modern Theme Variables */
+  --background: 0 0% 100%;
+  --foreground: 222.2 84% 4.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 84% 4.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 84% 4.9%;
+  --primary: 0 72.2% 50.6%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222.2 84% 4.9%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 210 40% 96%;
+  --accent-foreground: 222.2 84% 4.9%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 0 72.2% 50.6%;
   --radius: 0.625rem;
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
@@ -122,15 +135,25 @@ body {
   color: hsl(var(--foreground));
   font-family: var(--font-text);
   line-height: 1.6;
+  font-synthesis-weight: none;
+  text-rendering: optimizeLegibility;
 }
 
-/* UW-Madison brand heading styles */
+/* Enhanced heading styles with better typography */
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display);
   font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--text-dark-gray);
 }
 
-/* Brand-specific utility classes */
+/* Smooth transitions for all interactive elements */
+* {
+  transition: colors 150ms ease, border-color 150ms ease, background-color 150ms ease,
+              box-shadow 150ms ease, transform 150ms ease;
+}
+
+/* Enhanced brand utility classes */
 .font-display {
   font-family: var(--font-display);
 }
@@ -143,12 +166,58 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--badger-red);
 }
 
+.text-badger-red-light {
+  color: var(--badger-red-light);
+}
+
+.text-medium-gray {
+  color: var(--text-medium-gray);
+}
+
 .bg-badger-red {
   background-color: var(--badger-red);
 }
 
+.bg-badger-red-light {
+  background-color: var(--badger-red-light);
+}
+
+.bg-gradient-modern {
+  background: linear-gradient(135deg, var(--light-gray) 0%, #FFFFFF 50%, var(--light-gray) 100%);
+}
+
 .border-badger-red {
   border-color: var(--badger-red);
+}
+
+.border-medium-gray {
+  border-color: var(--medium-gray);
+}
+
+/* Modern shadows */
+.shadow-modern {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.shadow-modern-lg {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Status colors */
+.text-success {
+  color: var(--success-green);
+}
+
+.bg-success {
+  background-color: var(--success-green);
+}
+
+.text-warning {
+  color: var(--warning-amber);
+}
+
+.bg-warning {
+  background-color: var(--warning-amber);
 }
 
 .dark {
