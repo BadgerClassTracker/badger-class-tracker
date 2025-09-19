@@ -7,6 +7,8 @@ import Link from 'next/link';
 import { getCurrentUser, signOut, fetchAuthSession } from 'aws-amplify/auth';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useRouter } from 'next/navigation';
+import SignIn from '../../components/sign-in';
+import Logo from '../../components/logo';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,7 +32,7 @@ export default function SearchPage() {
   const [expandedCourses, setExpandedCourses] = useState<Set<string>>(new Set());
   const [subscriptionStates, setSubscriptionStates] = useState({});
   const [subscriptionErrors, setSubscriptionErrors] = useState({});
-  const [courseSections, setCourseSections] = useState<{[key: string]: Section[]}>({});
+  const [courseSections, setCourseSections] = useState<{ [key: string]: Section[] }>({});
   const [loadingSections, setLoadingSections] = useState<Set<string>>(new Set());
   const [expandedLectures, setExpandedLectures] = useState<Set<string>>(new Set());
   const router = useRouter();
@@ -39,13 +41,12 @@ export default function SearchPage() {
   const { data: searchResults, isLoading: searchLoading, error } = useQuery({
     queryKey: ['searchCourses', searchQuery, selectedTerm],
     queryFn: () => api.searchCourses({ search: searchQuery, term: selectedTerm !== '0000' ? selectedTerm : undefined }),
-    enabled: searchQuery.length > 2 && !!user
+    enabled: searchQuery.length > 2
   });
 
   const { data: termsData, isLoading: termsLoading } = useQuery({
     queryKey: ['getTerms'],
-    queryFn: () => api.getTerms(),
-    enabled: !!user
+    queryFn: () => api.getTerms()
   });
 
   const { data: userSubscriptions, isLoading: subscriptionsLoading } = useQuery({
@@ -81,7 +82,8 @@ export default function SearchPage() {
         }
         if (fullName) setUserName(fullName);
       } catch {
-        router.push('/signin');
+        // User not authenticated - that's fine, they can still search
+        setUser(null);
       } finally {
         setIsLoading(false);
       }
@@ -102,19 +104,6 @@ export default function SearchPage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showUserDropdown]);
-
-  // Cross-tab synchronization
-  useEffect(() => {
-    const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === 'subscriptions-updated') {
-        // Another tab updated subscriptions, refetch our data
-        queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, [queryClient]);
 
   // Cross-tab synchronization
   useEffect(() => {
@@ -171,10 +160,6 @@ export default function SearchPage() {
 
   if (isLoading) {
     return <div>Loading...</div>;
-  }
-
-  if (!user) {
-    return null; // Will redirect
   }
 
   const toggleCourseExpansion = async (courseKey: string, course: Course) => {
@@ -347,31 +332,57 @@ export default function SearchPage() {
 
   const handleSubscribe = async (section: Section, course: Course) => {
     const sectionKey = section.classUniqueId.classNumber;
-    const isSubscribed = isSubscribedToSection(sectionKey);
-
     setSubscriptionStates(prev => ({ ...prev, [sectionKey]: 'loading' }));
     setSubscriptionErrors(prev => ({ ...prev, [sectionKey]: '' }));
 
     try {
-      if (isSubscribed) {
-        // Unsubscribe
-        const subscriptionId = getSubscriptionId(sectionKey);
-        if (subscriptionId) {
-          await api.deleteSubscription(subscriptionId);
-        }
-      } else {
-        // Subscribe
-        const request: CreateSubscriptionRequest = {
-          termCode: section.classUniqueId.termCode,
-          subjectCode: course.subject.subjectCode,
-          courseId: course.courseId,
-          catalogNumber: course.catalogNumber,
-          classNumber: section.classUniqueId.classNumber,
-          notifyOn: 'OPEN',
-          sectionName: `${section.type} ${section.sectionNumber}`
-        };
+      const request: CreateSubscriptionRequest = {
+        termCode: section.classUniqueId.termCode,
+        subjectCode: course.subject.subjectCode,
+        courseId: course.courseId,
+        catalogNumber: course.catalogNumber,
+        classNumber: section.classUniqueId.classNumber,
+        notifyOn: 'ANY',
+        sectionName: `${section.type} ${section.sectionNumber}`
+      };
 
-        await api.createSubscription(request);
+      await api.createSubscription(request);
+
+      // Invalidate and refetch subscriptions to update the UI
+      await queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+
+      // Notify other tabs that subscriptions were updated
+      localStorage.setItem('subscriptions-updated', Date.now().toString());
+
+      setSubscriptionStates(prev => ({ ...prev, [sectionKey]: 'idle' }));
+    } catch (err) {
+      // Check if it's a 401 unauthorized error
+      if (err instanceof Error && (err as any).status === 401) {
+        setSubscriptionStates(prev => ({ ...prev, [sectionKey]: 'error' }));
+        setSubscriptionErrors(prev => ({
+          ...prev,
+          [sectionKey]: 'Please sign in to subscribe to courses'
+        }));
+        return;
+      }
+
+      setSubscriptionStates(prev => ({ ...prev, [sectionKey]: 'error' }));
+      setSubscriptionErrors(prev => ({
+        ...prev,
+        [sectionKey]: err instanceof Error ? err.message : 'Failed to subscribe'
+      }));
+    }
+  };
+
+  const handleUnsubscribe = async (section: Section, course: Course) => {
+    const sectionKey = section.classUniqueId.classNumber;
+    setSubscriptionStates(prev => ({ ...prev, [sectionKey]: 'loading' }));
+    setSubscriptionErrors(prev => ({ ...prev, [sectionKey]: '' }));
+
+    try {
+      const subscriptionId = getSubscriptionId(sectionKey);
+      if (subscriptionId) {
+        await api.deleteSubscription(subscriptionId);
       }
 
       // Invalidate and refetch subscriptions to update the UI
@@ -380,16 +391,16 @@ export default function SearchPage() {
       // Notify other tabs that subscriptions were updated
       localStorage.setItem('subscriptions-updated', Date.now().toString());
 
-      // Clear local state - let the actual subscription data drive the UI
       setSubscriptionStates(prev => ({ ...prev, [sectionKey]: 'idle' }));
     } catch (err) {
       setSubscriptionStates(prev => ({ ...prev, [sectionKey]: 'error' }));
       setSubscriptionErrors(prev => ({
         ...prev,
-        [sectionKey]: err instanceof Error ? err.message : `Failed to ${isSubscribed ? 'unsubscribe' : 'subscribe'}`
+        [sectionKey]: err instanceof Error ? err.message : 'Failed to unsubscribe'
       }));
     }
   };
+
 
   const getStatusBadge = (status: string, openSeats: number) => {
     if (status === 'OPEN' && openSeats > 0) {
@@ -479,7 +490,7 @@ export default function SearchPage() {
             ? "border-red-500 text-red-600 hover:bg-red-50 hover:border-red-600"
             : "border-blue-500 text-blue-600 hover:bg-blue-50 hover:border-blue-600"
           }
-          onClick={() => handleSubscribe(section, course)}
+          onClick={() => isSubscribed ? handleUnsubscribe(section, course) : handleSubscribe(section, course)}
           disabled={state === 'loading'}
         >
           {state === 'loading' ? (
@@ -512,15 +523,12 @@ export default function SearchPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-light-gray to-white">
+
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-light-gray">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
-            <Link href="/search" className="flex items-center">
-              <h1 className="text-3xl font-display font-bold text-text-dark-gray">
-                🦡 Badger Class Tracker
-              </h1>
-            </Link>
+            <Logo size="md" />
             <div className="flex items-center space-x-4">
               <Button asChild variant="outline">
                 <Link href="/subscriptions">My Subscriptions</Link>
@@ -575,53 +583,54 @@ export default function SearchPage() {
       {/* Main content */}
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
+          {/* Search Hero Section */}
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-display font-bold text-text-dark-gray mb-4">Find Your Classes</h2>
+            <p className="text-lg text-text-medium-gray">Search UW-Madison courses and get notified when seats open up</p>
+          </div>
+
           {/* Search Form */}
-          <Card className="mb-8">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Search className="h-5 w-5" />
-                Search UW-Madison Classes
-              </CardTitle>
-              <CardDescription>
-                Find courses and subscribe to get notified when seats open up
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-4">
-                <div className="flex-1">
+          <div className="bg-white rounded-lg border border-gray-200 p-6 mb-8">
+            <div className="flex flex-col lg:flex-row gap-4">
+              <div className="flex-1">
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-text-medium-gray" />
                   <Input
                     placeholder="Search by course code, title, or instructor (e.g., 'COMP SCI 300', 'data structures', 'Smith')"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full"
+                    className="pl-12 h-12 text-base border border-gray-300 focus:border-badger-red bg-white rounded-lg"
                   />
                 </div>
-                <div className="w-48">
-                  <Select value={selectedTerm} onValueChange={setSelectedTerm}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select term" />
-                    </SelectTrigger>
-                    <SelectContent className="z-50 bg-white">
-                      {termsLoading ? (
-                        <SelectItem value="loading" disabled>Loading terms...</SelectItem>
-                      ) : (
-                        termsData?.terms?.map((term: any) => (
-                          <SelectItem key={term.value} value={term.value}>
-                            {term.label}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
-              {searchQuery.length > 0 && searchQuery.length <= 2 && (
-                <p className="text-sm text-gray-500 mt-2">
+              <div className="lg:w-64">
+                <Select value={selectedTerm} onValueChange={setSelectedTerm}>
+                  <SelectTrigger className="h-12 text-base border border-gray-300 focus:border-badger-red bg-white rounded-lg">
+                    <SelectValue placeholder="Select term" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border border-gray-300 rounded-lg">
+                    {termsLoading ? (
+                      <SelectItem value="loading" disabled>Loading terms...</SelectItem>
+                    ) : (
+                      termsData?.terms?.map((term: any) => (
+                        <SelectItem key={term.value} value={term.value}>
+                          {term.label}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {searchQuery.length > 0 && searchQuery.length <= 2 && (
+              <div className="flex items-center gap-2 mt-4 px-4 py-2 bg-warning-amber/10 border border-warning-amber/20 rounded-xl">
+                <div className="w-4 h-4 rounded-full bg-warning-amber"></div>
+                <p className="text-sm text-warning-amber font-medium">
                   Type at least 3 characters to search
                 </p>
-              )}
-            </CardContent>
-          </Card>
+              </div>
+            )}
+          </div>
 
           {/* Search Results */}
           {searchLoading && (
@@ -645,11 +654,11 @@ export default function SearchPage() {
               <div className="text-sm text-gray-600">
                 Found {searchResults.totalResults} results
               </div>
-              
+
               {searchResults.courses.map((course: Course, index: number) => {
                 const courseKey = `${course.subject.termCode}-${course.subject.subjectCode}-${course.catalogNumber}-${index}`;
                 const isExpanded = expandedCourses.has(courseKey);
-                
+
                 return (
                   <Card key={courseKey} className="cursor-pointer hover:bg-gray-50 hover:shadow-md transition-all duration-200">
                     <CardHeader onClick={() => toggleCourseExpansion(courseKey, course)}>
@@ -692,7 +701,7 @@ export default function SearchPage() {
                         </div>
                       </div>
                     </CardHeader>
-                    
+
                     {isExpanded && (
                       <CardContent>
                         <div className="space-y-4">
@@ -720,9 +729,8 @@ export default function SearchPage() {
                                       group.lecture && (
                                         <tr
                                           key={`lecture-${group.lecture.classUniqueId.classNumber}-${groupIndex}`}
-                                          className={`border-b border-gray-100 cursor-pointer transition-colors ${
-                                            hasLabs ? 'hover:bg-blue-50' : 'hover:bg-gray-50'
-                                          }`}
+                                          className={`border-b border-gray-100 cursor-pointer transition-colors ${hasLabs ? 'hover:bg-blue-50' : 'hover:bg-gray-50'
+                                            }`}
                                           onClick={() => hasLabs && toggleLectureExpansion(lectureId)}
                                         >
                                           <td className="py-3 px-3">
@@ -929,6 +937,7 @@ export default function SearchPage() {
           )}
         </div>
       </main>
+
     </div>
   );
 }
