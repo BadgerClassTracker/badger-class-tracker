@@ -1,4 +1,5 @@
 import React from 'react';
+import Link from 'next/link';
 
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg';
@@ -28,7 +29,7 @@ const Logo: React.FC<LogoProps> = ({ size = 'md', showText = true, className = '
   const currentSize = sizeClasses[size];
 
   return (
-    <div className={`flex items-center space-x-3 ${currentSize.container} ${className}`}>
+    <Link href="/" className={`flex items-center space-x-3 ${currentSize.container} ${className} hover:opacity-80 transition-opacity cursor-pointer`}>
       {/* Logo Icon */}
       <div className={`${currentSize.icon} bg-gradient-to-br from-badger-red to-badger-red-dark rounded-xl flex items-center justify-center text-white font-bold shadow-lg`}>
         🦡
@@ -42,7 +43,7 @@ const Logo: React.FC<LogoProps> = ({ size = 'md', showText = true, className = '
           <span className="text-text-dark-gray"> Tracker</span>
         </div>
       )}
-    </div>
+    </Link>
   );
 };
 
