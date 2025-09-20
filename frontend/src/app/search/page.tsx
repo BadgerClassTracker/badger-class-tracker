@@ -530,51 +530,59 @@ export default function SearchPage() {
           <div className="flex justify-between items-center py-6">
             <Logo size="md" />
             <div className="flex items-center space-x-4">
-              <Button asChild variant="outline">
-                <Link href="/subscriptions">My Subscriptions</Link>
-              </Button>
-              <div className="flex items-center space-x-3">
-                <div className="relative">
-                  <button
-                    onClick={() => setShowUserDropdown(!showUserDropdown)}
-                    className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
-                  >
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage
-                        src={userPicture}
-                        alt={userName || userEmail || 'User'}
-                      />
-                      <AvatarFallback className="bg-badger-red text-white text-sm">
-                        {(userName || userEmail || 'U')
-                          .split(' ')
-                          .map(n => n[0])
-                          .join('')
-                          .toUpperCase()
-                          .slice(0, 2)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <ChevronDown className="h-4 w-4 text-gray-500" />
-                  </button>
-
-                  {showUserDropdown && (
-                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
-                      <div className="px-4 py-3 border-b border-gray-100">
-                        <div className="text-sm font-medium text-gray-900 mb-1">{userName || 'User'}</div>
-                        <div className="text-xs text-gray-500 break-all">{userEmail || 'Loading...'}</div>
-                      </div>
+              {user ? (
+                // Authenticated user
+                <>
+                  <Button asChild variant="outline">
+                    <Link href="/subscriptions">My Subscriptions</Link>
+                  </Button>
+                  <div className="flex items-center space-x-3">
+                    <div className="relative">
                       <button
-                        onClick={() => {
-                          setShowUserDropdown(false);
-                          handleSignOut();
-                        }}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                        onClick={() => setShowUserDropdown(!showUserDropdown)}
+                        className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
                       >
-                        Sign out
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage
+                            src={userPicture}
+                            alt={userName || userEmail || 'User'}
+                          />
+                          <AvatarFallback className="bg-badger-red text-white text-sm">
+                            {(userName || userEmail || 'U')
+                              .split(' ')
+                              .map(n => n[0])
+                              .join('')
+                              .toUpperCase()
+                              .slice(0, 2)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <ChevronDown className="h-4 w-4 text-gray-500" />
                       </button>
+
+                      {showUserDropdown && (
+                        <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+                          <div className="px-4 py-3 border-b border-gray-100">
+                            <div className="text-sm font-medium text-gray-900 mb-1">{userName || 'User'}</div>
+                            <div className="text-xs text-gray-500 break-all">{userEmail || 'Loading...'}</div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setShowUserDropdown(false);
+                              handleSignOut();
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                          >
+                            Sign out
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              </div>
+                  </div>
+                </>
+              ) : (
+                // Non-authenticated user - show sign in button
+                <SignIn />
+              )}
             </div>
           </div>
         </div>
