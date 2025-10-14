@@ -154,12 +154,12 @@ export class BadgerClassTrackerStack extends Stack {
         ...overrides,
       });
 
-    // helper: attach retention to the lambda’s log group name
+    // helper: attach retention to the lambda's log group name
     const attachRetention = (id: string, fn: lambda.Function) => {
-      // new logs.LogRetention(this, `${id}LogRetention`, {
-      //   logGroupName: `/aws/lambda/${fn.functionName}`,
-      //   retention: logs.RetentionDays.TWO_WEEKS,
-      // });
+      new logs.LogRetention(this, `${id}LogRetention`, {
+        logGroupName: `/aws/lambda/${fn.functionName}`,
+        retention: logs.RetentionDays.TWO_WEEKS,
+      });
     };
 
     /* ──────────────────────────────────────────────────────────────────────────
@@ -281,6 +281,17 @@ export class BadgerClassTrackerStack extends Stack {
       }
     );
     attachRetention("GetTermsFn", getTermsFn);
+
+    const swaggerFn = nodeFn(
+      "SwaggerFn",
+      "services/api/swagger.ts",
+      {},
+      {
+        functionName: `bct-${stage}-swagger`,
+        timeout: Duration.seconds(5),
+      }
+    );
+    attachRetention("SwaggerFn", swaggerFn);
 
     // Routes
     const subs = api.root.addResource("subscriptions");
@@ -410,6 +421,17 @@ export class BadgerClassTrackerStack extends Stack {
       }],
     });
     terms.addMethod("GET", new apigw.LambdaIntegration(getTermsFn));
+
+    // Public API documentation endpoint (Swagger UI)
+    const docs = api.root.addResource("docs");
+    docs.addMethod("GET", new apigw.LambdaIntegration(swaggerFn));
+
+    // Support swagger.json and openapi.json paths
+    const swaggerJson = docs.addResource("swagger.json");
+    swaggerJson.addMethod("GET", new apigw.LambdaIntegration(swaggerFn));
+
+    const openapiJson = docs.addResource("openapi.json");
+    openapiJson.addMethod("GET", new apigw.LambdaIntegration(swaggerFn));
 
     /* ──────────────────────────────────────────────────────────────────────────
      * 4) Compute: Poller (scheduled) + Notifier (event-driven)
@@ -638,66 +660,55 @@ export class BadgerClassTrackerStack extends Stack {
       comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
     }).addAlarmAction(new actions.SnsAction(alerts));
 
-    const dash = new cw.Dashboard(this, "BctDashboard", {
-      dashboardName: `BadgerClassTracker-${stage}`,
+    // Grafana Cloud Integration
+    // Create IAM user for Grafana Cloud to access CloudWatch metrics
+    // This will be used to configure CloudWatch data source in Grafana Cloud
+    const grafanaUser = new iam.User(this, "GrafanaCloudUser", {
+      userName: `bct-${stage}-grafana-cloud`,
     });
-    dash.addWidgets(
-      new cw.TextWidget({
-        markdown: `# Badger Class Tracker — **${stage}**\nSLOs & key signals`,
-        height: 2,
-        width: 24,
+
+    grafanaUser.addToPolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "cloudwatch:DescribeAlarmsForMetric",
+          "cloudwatch:DescribeAlarmHistory",
+          "cloudwatch:DescribeAlarms",
+          "cloudwatch:ListMetrics",
+          "cloudwatch:GetMetricStatistics",
+          "cloudwatch:GetMetricData",
+          "cloudwatch:GetInsightRuleReport",
+        ],
+        resources: ["*"],
       })
     );
-    dash.addWidgets(
-      new cw.GraphWidget({
-        title: "Poller Freshness — p95 age (s)",
-        left: [pollerFreshnessP95],
-        leftYAxis: { min: 0 },
-        width: 12,
-        height: 6,
-        view: cw.GraphWidgetView.TIME_SERIES,
-      }),
-      new cw.GraphWidget({
-        title: "Notifier Latency — p95 (ms)",
-        left: [notifierLatencyP95],
-        leftYAxis: { min: 0 },
-        width: 12,
-        height: 6,
-        view: cw.GraphWidgetView.TIME_SERIES,
+
+    grafanaUser.addToPolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "logs:DescribeLogGroups",
+          "logs:GetLogGroupFields",
+          "logs:StartQuery",
+          "logs:StopQuery",
+          "logs:GetQueryResults",
+          "logs:GetLogEvents",
+        ],
+        resources: ["*"],
       })
     );
-    dash.addWidgets(
-      new cw.GraphWidget({
-        title: "Emails — Sent / Suppressed (5m sum)",
-        left: [emailSentSum, emailSuppressedSum],
-        width: 12,
-        height: 6,
-      }),
-      new cw.GraphWidget({
-        title: "Bounce / Complaint Rate",
-        left: [bounceRate, complaintRate],
-        leftYAxis: { min: 0, max: 0.2 },
-        width: 12,
-        height: 6,
+
+    grafanaUser.addToPolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "ec2:DescribeRegions",
+          "tag:GetResources",
+        ],
+        resources: ["*"],
       })
     );
-    dash.addWidgets(
-      new cw.SingleValueWidget({
-        title: "Now: Poller freshness p95 (s)",
-        metrics: [pollerFreshnessP95],
-        width: 8,
-      }),
-      new cw.SingleValueWidget({
-        title: "Now: Notifier latency p95 (ms)",
-        metrics: [notifierLatencyP95],
-        width: 8,
-      }),
-      new cw.SingleValueWidget({
-        title: "Now: Emails sent (5m sum)",
-        metrics: [emailSentSum],
-        width: 8,
-      })
-    );
+
+    const grafanaAccessKey = new iam.CfnAccessKey(this, "GrafanaCloudAccessKey", {
+      userName: grafanaUser.userName,
+    });
 
     /* ──────────────────────────────────────────────────────────────────────────
      * 7) Outputs (sanity)
@@ -709,6 +720,14 @@ export class BadgerClassTrackerStack extends Stack {
     new CfnOutput(this, "UserPoolId", { value: userPool.userPoolId });
     new CfnOutput(this, "UserPoolClientId", {
       value: userPoolClient.userPoolClientId,
+    });
+    new CfnOutput(this, "GrafanaCloudAccessKeyId", {
+      value: grafanaAccessKey.ref,
+      description: "AWS Access Key ID for Grafana Cloud CloudWatch data source",
+    });
+    new CfnOutput(this, "GrafanaCloudSecretAccessKey", {
+      value: grafanaAccessKey.attrSecretAccessKey,
+      description: "AWS Secret Access Key for Grafana Cloud (store securely!)",
     });
   }
 }
