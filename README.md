@@ -27,27 +27,27 @@
 
 ### Backend Infrastructure (AWS CDK)
 
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| **IaC** | AWS CDK v2 (TypeScript) | Infrastructure as Code, reproducible deployments |
-| **Compute** | Lambda (Node.js 20) | Serverless compute with auto-scaling |
-| **Database** | DynamoDB | NoSQL single-table design with GSI |
-| **API** | API Gateway REST | Managed API with Cognito authorizer |
-| **Events** | EventBridge | Event-driven service decoupling |
-| **Email** | Amazon SES | Transactional email with reputation monitoring |
-| **Monitoring** | CloudWatch + Grafana Cloud | Metrics, logs, alarms, SLO tracking |
-| **Auth** | Cognito + Google OAuth | User authentication and authorization |
+| Component      | Technology                 | Purpose                                          |
+| -------------- | -------------------------- | ------------------------------------------------ |
+| **IaC**        | AWS CDK v2 (TypeScript)    | Infrastructure as Code, reproducible deployments |
+| **Compute**    | Lambda (Node.js 20)        | Serverless compute with auto-scaling             |
+| **Database**   | DynamoDB                   | NoSQL single-table design with GSI               |
+| **API**        | API Gateway REST           | Managed API with Cognito authorizer              |
+| **Events**     | EventBridge                | Event-driven service decoupling                  |
+| **Email**      | Amazon SES                 | Transactional email with reputation monitoring   |
+| **Monitoring** | CloudWatch + Grafana Cloud | Metrics, logs, alarms, SLO tracking              |
+| **Auth**       | Cognito + Google OAuth     | User authentication and authorization            |
 
 ### Frontend
 
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| **Framework** | Next.js 15 (App Router) | React framework with SSR/SSG |
-| **Runtime** | React 19 | UI library with concurrent features |
-| **Styling** | Tailwind CSS v4 + shadcn/ui | Utility-first CSS + accessible components |
-| **State** | React Query | Server state management and caching |
-| **Auth** | AWS Amplify Auth | Cognito integration for frontend |
-| **Deployment** | AWS Amplify | CI/CD with CloudFront CDN |
+| Component      | Technology                  | Purpose                                   |
+| -------------- | --------------------------- | ----------------------------------------- |
+| **Framework**  | Next.js 15 (App Router)     | React framework with SSR/SSG              |
+| **Runtime**    | React 19                    | UI library with concurrent features       |
+| **Styling**    | Tailwind CSS v4 + shadcn/ui | Utility-first CSS + accessible components |
+| **State**      | React Query                 | Server state management and caching       |
+| **Auth**       | AWS Amplify Auth            | Cognito integration for frontend          |
+| **Deployment** | AWS Amplify                 | CI/CD with CloudFront CDN                 |
 
 ## 📊 Data Model & Access Patterns
 
@@ -57,22 +57,23 @@ Efficient data modeling using a single table with GSI for optimal query performa
 
 **Primary Key Structure:**
 
-| PK | SK | Attributes |
-|----|----|----|
-| `USER#{email}` | `SUB#{uuid}` | Subscription details |
-| `COURSE#{term}#{subj}#{id}` | `WATCH` | Watch count, metadata |
-| `SEC#{term}#{classNbr}` | `STATE` | Status cache, TTL |
-| `UNSUB` | `TOKEN#{uuid}` | Unsubscribe tokens (30d TTL) |
-| `DEDUP#{subId}` | `timestamp` | Notification dedup (24h TTL) |
-| `SUPPRESS#{email}` | `SES` | Bounce/complaint suppression |
+| PK                          | SK             | Attributes                   |
+| --------------------------- | -------------- | ---------------------------- |
+| `USER#{email}`              | `SUB#{uuid}`   | Subscription details         |
+| `COURSE#{term}#{subj}#{id}` | `WATCH`        | Watch count, metadata        |
+| `SEC#{term}#{classNbr}`     | `STATE`        | Status cache, TTL            |
+| `UNSUB`                     | `TOKEN#{uuid}` | Unsubscribe tokens (30d TTL) |
+| `DEDUP#{subId}`             | `timestamp`    | Notification dedup (24h TTL) |
+| `SUPPRESS#{email}`          | `SES`          | Bounce/complaint suppression |
 
 **GSI1 (Section → Subscribers):**
 
-| GSI1PK | GSI1SK |
-|--------|--------|
+| GSI1PK                  | GSI1SK       |
+| ----------------------- | ------------ |
 | `SEC#{term}#{classNbr}` | `SUB#{uuid}` |
 
 **Key Design Decisions:**
+
 - **Single table** reduces costs and improves query performance
 - **GSI1** enables efficient section-to-subscription fan-out for notifications
 - **TTL attributes** automatically clean up expired data (STATE: 45d after term, DEDUP: 24h, UNSUB: 30d)
@@ -118,6 +119,7 @@ sequenceDiagram
 ```
 
 **Event Schema:**
+
 ```typescript
 {
   source: "uw.enroll.poller",
@@ -137,6 +139,7 @@ sequenceDiagram
 ```
 
 **Benefits:**
+
 - Loose coupling between poller and notifier
 - Built-in retry with DLQ pattern
 - Event replay capability for debugging
@@ -146,13 +149,13 @@ sequenceDiagram
 
 ### Service Level Objectives (SLOs)
 
-| Metric | Target | Alert Threshold |
-|--------|--------|----------------|
-| **Poller Freshness (p95)** | < 5 minutes | > 7 minutes |
-| **Notifier Latency (p95)** | < 1 minute | > 2 minutes |
-| **Email Bounce Rate** | < 2% | > 5% |
-| **Email Complaint Rate** | < 0.1% | > 1% |
-| **API Error Rate** | < 1% | > 5% |
+| Metric                     | Target      | Alert Threshold |
+| -------------------------- | ----------- | --------------- |
+| **Poller Freshness (p95)** | < 5 minutes | > 7 minutes     |
+| **Notifier Latency (p95)** | < 1 minute  | > 2 minutes     |
+| **Email Bounce Rate**      | < 2%        | > 5%            |
+| **Email Complaint Rate**   | < 0.1%      | > 1%            |
+| **API Error Rate**         | < 1%        | > 5%            |
 
 ### CloudWatch Embedded Metrics (EMF)
 
@@ -176,6 +179,7 @@ putMetric("EmailSuppressedCount", 1, "Count");
 ### 📊 [Live Grafana Dashboard](https://imnotjin.grafana.net/dashboard/snapshot/s6ZrMrC4C6bZ5nd8McVvaRLctJ2w6rmu)
 
 Real-time monitoring with:
+
 - SLO compliance tracking (p95 latencies with thresholds)
 - Operational metrics (courses watched, sections scanned, status changes)
 - Email health (volume, suppression, bounce/complaint rates)
@@ -194,6 +198,7 @@ Request → Lambda → [DLQ Pattern]
 ```
 
 **Implementation:**
+
 - **Poller DLQ**: Captures polling failures for manual replay
 - **Notifier DLQ**: Captures notification failures (e.g., SES throttling)
 - **CloudWatch Alarms**: Alert on any DLQ messages > 0
@@ -202,6 +207,7 @@ Request → Lambda → [DLQ Pattern]
 ### Data Integrity
 
 - **TTL Management**: Automated cleanup of expired data
+
   - STATE items: 45 days after term end (uses UW aggregate API for accurate dates)
   - DEDUP items: 24 hours (prevents duplicate notifications)
   - UNSUB tokens: 30 days (one-click unsubscribe links)
@@ -221,6 +227,7 @@ User → Google OAuth → Cognito → JWT Token → API Gateway
 ```
 
 **Security Features:**
+
 - Google OAuth 2.0 integration via Cognito
 - JWT tokens for stateless authentication
 - IAM least privilege policies for Lambda functions
@@ -250,6 +257,7 @@ npx cdk deploy
 ```
 
 **CDK Stack Features:**
+
 - Automated resource provisioning (Lambda, DynamoDB, API Gateway, etc.)
 - Environment-based configuration (dev/staging/prod)
 - Rollback safety with CloudFormation
@@ -258,11 +266,13 @@ npx cdk deploy
 ### CI/CD Pipeline
 
 **Backend:**
+
 - AWS CDK synth → CloudFormation changeset → Deploy
 - Automated Lambda bundling with esbuild
 - 2-week log retention for all Lambda functions
 
 **Frontend:**
+
 - AWS Amplify: GitHub integration → Build → Deploy to CloudFront
 - Automatic PR previews
 - Cache invalidation on deploy
@@ -275,16 +285,17 @@ npx cdk deploy
 
 **Key Endpoints:**
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `POST` | `/subscriptions` | ✅ | Create subscription |
-| `GET` | `/subscriptions` | ✅ | List user subscriptions |
-| `DELETE` | `/subscriptions/{id}` | ✅ | Delete subscription |
-| `GET` | `/courses` | ❌ | Search UW courses |
-| `GET` | `/terms` | ❌ | Get available terms |
-| `GET` | `/unsubscribe` | ❌ | One-click unsubscribe |
+| Method   | Endpoint              | Auth | Description             |
+| -------- | --------------------- | ---- | ----------------------- |
+| `POST`   | `/subscriptions`      | ✅   | Create subscription     |
+| `GET`    | `/subscriptions`      | ✅   | List user subscriptions |
+| `DELETE` | `/subscriptions/{id}` | ✅   | Delete subscription     |
+| `GET`    | `/courses`            | ❌   | Search UW courses       |
+| `GET`    | `/terms`              | ❌   | Get available terms     |
+| `GET`    | `/unsubscribe`        | ❌   | One-click unsubscribe   |
 
 **Rate Limits:**
+
 - `POST /subscriptions`: 5 req/s, burst 10
 - Other endpoints: Default API Gateway limits
 
@@ -363,38 +374,23 @@ badger-class-tracker/
 
 ### UW-Madison Public APIs
 
-| API | Purpose | Rate Limit |
-|-----|---------|------------|
-| **Search API** | Course search with filters | Unspecified |
-| **Enrollment API** | Real-time section status | Unspecified |
-| **Aggregate API** | Terms, subjects metadata | Unspecified |
+| API                  | Purpose                     | Rate Limit  |
+| -------------------- | --------------------------- | ----------- |
+| **Search API**       | Course search with filters  | Unspecified |
+| **Enrollment API**   | Real-time section status    | Unspecified |
+| **Aggregate API**    | Terms, subjects metadata    | Unspecified |
 | **Subjects Map API** | Subject code → name mapping | Unspecified |
 
 **API Reliability:**
+
 - Retry with exponential backoff (3 attempts)
 - Circuit breaker pattern (fail fast after 5 consecutive errors)
 - Fallback to cached data for subjects map
-
-## 🎓 Learning Outcomes
-
-This project demonstrates:
-
-✅ **Cloud Architecture**: Designing serverless systems on AWS
-✅ **Infrastructure as Code**: AWS CDK for reproducible deployments
-✅ **Data Modeling**: Single-table DynamoDB with GSI patterns
-✅ **Event-Driven Design**: EventBridge for service decoupling
-✅ **Observability**: CloudWatch EMF, Grafana dashboards, SLO tracking
-✅ **Security**: IAM policies, OAuth integration, API authorization
-✅ **Reliability**: DLQ patterns, retries, idempotency, TTL management
-✅ **Cost Optimization**: Serverless, on-demand pricing, resource tuning
-✅ **Full-Stack Development**: Next.js frontend + AWS backend integration
 
 ## 📞 Contact
 
 For questions about the technical implementation or architecture decisions, feel free to reach out!
 
 ---
-
-**Tech Stack:** AWS CDK · Lambda · DynamoDB · API Gateway · EventBridge · SES · CloudWatch · Grafana · Next.js · TypeScript · Cognito
 
 Built with ❤️ for UW-Madison students. On, Wisconsin! 🦡
