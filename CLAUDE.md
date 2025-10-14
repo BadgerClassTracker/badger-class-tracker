@@ -71,6 +71,7 @@ This is a serverless AWS application built with CDK that tracks University of Wi
 - **User limits**: SUBCOUNT items track subscription limits per user, decremented on unsubscribe
 - **Email suppression**: SES bounce/complaint feedback handled via configuration set → EventBridge → feedback handler
 - **Metrics**: CloudWatch metrics in EMF format for SLO tracking across multiple terms
+- **Monitoring**: Grafana Cloud integration for professional dashboard visualization (free tier)
 
 ### External APIs
 
@@ -107,6 +108,7 @@ This is a serverless AWS application built with CDK that tracks University of Wi
 - EventBridge for event-driven architecture
 - SES for email notifications
 - CloudWatch metrics and alarms
+- Grafana Cloud for dashboard visualization
 
 **Frontend (Next.js):**
 - Next.js 15 with Turbopack
@@ -140,6 +142,18 @@ This is a serverless AWS application built with CDK that tracks University of Wi
 3. Backend validates tokens via Cognito authorizer
 4. Search API proxies UW enrollment API (GET → POST transformation)
 5. Event-driven notifications via EventBridge + SES
+
+**Monitoring & Observability:**
+- Grafana Cloud integration (free tier - 10k metrics, no time limit)
+- IAM user created by CDK for CloudWatch data source access
+- Pre-built dashboard JSON in `backend/grafana-cloud-dashboard.json`
+- Public dashboard snapshot: https://imnotjin.grafana.net/dashboard/snapshot/s6ZrMrC4C6bZ5nd8McVvaRLctJ2w6rmu
+- Dashboard includes:
+  - SLO metrics (poller freshness p95 < 7min, notifier latency p95 < 2min)
+  - Email delivery volume and suppression tracking
+  - SES reputation (bounce/complaint rates with thresholds)
+  - Operational metrics (watched courses, sections scanned, status changes)
+  - Auto-refresh every 30 seconds with color-coded thresholds
 
 ## Git Commit Guidelines
 
