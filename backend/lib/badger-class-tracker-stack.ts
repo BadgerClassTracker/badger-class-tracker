@@ -453,9 +453,9 @@ export class BadgerClassTrackerStack extends Stack {
     table.grantReadWriteData(pollerFn);
     bus.grantPutEventsTo(pollerFn);
 
-    // Every 5 minutes - triggers polling for all active terms
+    // Every 1 minute - triggers polling for all active terms
     // The poller will scan for active WATCH items to determine which terms to poll
-    new events.Rule(this, "PollEvery5m", {
+    new events.Rule(this, "PollEvery1m", {
       schedule: events.Schedule.rate(Duration.minutes(1)),
       targets: [
         new targets.LambdaFunction(pollerFn, {
