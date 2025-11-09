@@ -6,6 +6,13 @@ import { Button } from "@/components/ui/button"
 export default function SignIn() {
     const handleSignIn = async () => {
         try {
+            // Store current path to redirect back after sign-in
+            if (typeof window !== 'undefined') {
+                const currentPath = window.location.pathname;
+                if (currentPath !== '/') {
+                    sessionStorage.setItem('redirectAfterSignIn', currentPath);
+                }
+            }
             // Use Amplify's built-in OAuth flow (works with classic Hosted UI)
             await signInWithRedirect({ provider: 'Google' });
         } catch (error) {
