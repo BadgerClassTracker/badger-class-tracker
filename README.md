@@ -57,14 +57,14 @@ Efficient data modeling using a single table with GSI for optimal query performa
 
 **Primary Key Structure:**
 
-| PK                          | SK             | Attributes                   |
-| --------------------------- | -------------- | ---------------------------- |
-| `USER#{email}`              | `SUB#{uuid}`   | Subscription details         |
-| `COURSE#{term}#{subj}#{id}` | `WATCH`        | Watch count, metadata        |
-| `SEC#{term}#{classNbr}`     | `STATE`        | Status cache, TTL            |
-| `UNSUB`                     | `TOKEN#{uuid}` | Unsubscribe tokens (30d TTL) |
-| `DEDUP#{subId}`             | `timestamp`    | Notification dedup (24h TTL) |
-| `SUPPRESS#{email}`          | `SES`          | Bounce/complaint suppression |
+| PK                          | SK             | Attributes                     |
+| --------------------------- | -------------- | ------------------------------ |
+| `USER#{email}`              | `SUB#{uuid}`   | Subscription details           |
+| `COURSE#{term}#{subj}#{id}` | `WATCH`        | Watch count, metadata          |
+| `SEC#{term}#{classNbr}`     | `STATE`        | Status cache, TTL              |
+| `UNSUB#{token}`             | `TOKEN`        | Unsubscribe tokens (7d TTL)    |
+| `DEDUP#SEC#{term}#{classNbr}` | `USER#{email}` | Subscription guard (permanent) |
+| `SUPPRESS#{email}`          | `SES`          | Bounce/complaint suppression (30d TTL) |
 
 **GSI1 (Section → Subscribers):**
 
@@ -209,10 +209,10 @@ Request → Lambda → [DLQ Pattern]
 - **TTL Management**: Automated cleanup of expired data
 
   - STATE items: 45 days after term end (uses UW aggregate API for accurate dates)
-  - DEDUP items: 24 hours (prevents duplicate notifications)
-  - UNSUB tokens: 30 days (one-click unsubscribe links)
+  - UNSUB tokens: 7 days (one-click unsubscribe links)
+  - SUPPRESS items: 30 days (bounce/complaint suppression)
 
-- **Optimistic Locking**: ETags prevent lost updates
+- **Conditional Expressions**: Prevent concurrent update conflicts on critical operations
 - **Point-in-Time Recovery**: Enabled on DynamoDB table
 
 ## 🔐 Security
@@ -303,10 +303,9 @@ npx cdk deploy
 
 ### Performance Optimizations
 
-- **Single-table DynamoDB design**: Reduced query latency from 3 RCUs to 1 RCU per operation
+- **Single-table DynamoDB design**: Optimized access patterns for efficient queries across all entity types
 - **GSI for fan-out queries**: Enabled O(1) section-to-subscribers lookups
-- **Lambda memory tuning**: Optimized to 256MB after load testing
-- **API Gateway caching**: Reduced backend load for public endpoints
+- **Lambda memory tuning**: Optimized to 256MB for cost-performance balance
 
 ### Scalability
 
@@ -318,7 +317,7 @@ npx cdk deploy
 ### Cost Optimization
 
 - **Serverless architecture**: Pay-per-use, no idle costs
-- **Single-table design**: Reduced DynamoDB costs by 60%
+- **Single-table design**: Minimizes DynamoDB costs through efficient access patterns
 - **CloudWatch log retention**: 2 weeks (balance observability vs cost)
 - **Grafana Cloud free tier**: 10k metrics series included
 
@@ -408,8 +407,7 @@ badger-class-tracker/
 
 **API Reliability:**
 
-- Retry with exponential backoff (3 attempts)
-- Circuit breaker pattern (fail fast after 5 consecutive errors)
+- Direct integration with UW public APIs
 - Fallback to cached data for subjects map
 
 ## 📞 Contact
