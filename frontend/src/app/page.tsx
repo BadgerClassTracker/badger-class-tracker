@@ -1,17 +1,23 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getCurrentUser } from 'aws-amplify/auth';
+import { getCurrentUser, signOut, fetchAuthSession } from 'aws-amplify/auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import SignIn from '../components/sign-in';
 import Logo from '../components/logo';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { ChevronDown } from 'lucide-react';
 
 export default function HomePage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [userEmail, setUserEmail] = useState<string>('');
+  const [userPicture, setUserPicture] = useState<string>('');
+  const [userName, setUserName] = useState<string>('');
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -19,7 +25,30 @@ export default function HomePage() {
       try {
         await getCurrentUser();
         setIsAuthenticated(true);
-        router.push('/search');
+
+        // Get user data from the session
+        const session = await fetchAuthSession();
+        const idTokenPayload = session.tokens?.idToken?.payload;
+
+        const email = idTokenPayload?.email as string;
+        const picture = idTokenPayload?.picture as string;
+        const givenName = idTokenPayload?.given_name as string;
+        const familyName = idTokenPayload?.family_name as string;
+        const fullName = `${givenName} ${familyName}`.trim();
+
+        if (email) setUserEmail(email);
+        if (picture) {
+          const cleanPicture = picture.replace(/=s\d+-c$/, '');
+          setUserPicture(cleanPicture);
+        }
+        if (fullName) setUserName(fullName);
+
+        // Check if user should be redirected after sign-in
+        const redirectPath = sessionStorage.getItem('redirectAfterSignIn');
+        if (redirectPath) {
+          sessionStorage.removeItem('redirectAfterSignIn');
+          router.push(redirectPath);
+        }
       } catch {
         setIsAuthenticated(false);
       } finally {
@@ -30,15 +59,35 @@ export default function HomePage() {
     checkAuth();
   }, [router]);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (showUserDropdown && !target.closest('.relative')) {
+        setShowUserDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showUserDropdown]);
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      setIsAuthenticated(false);
+      setShowUserDropdown(false);
+      router.push('/');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
   if (isLoading) {
     return <div>Loading...</div>;
   }
 
-  if (isAuthenticated) {
-    return null; // Will redirect to search
-  }
-
-  // Landing page for non-authenticated users
+  // Landing page for all users
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50/30 relative overflow-hidden">
       {/* Background decoration */}
@@ -51,7 +100,55 @@ export default function HomePage() {
           <div className="flex justify-between items-center py-6">
             <Logo size="md" />
             <div className="flex items-center space-x-4">
-              <SignIn />
+              {isAuthenticated ? (
+                <>
+                  <Button asChild variant="outline">
+                    <Link href="/search">Search</Link>
+                  </Button>
+                  <Button asChild variant="outline">
+                    <Link href="/subscriptions">Subscriptions</Link>
+                  </Button>
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowUserDropdown(!showUserDropdown)}
+                      className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                    >
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage
+                          src={userPicture}
+                          alt={userName || userEmail || 'User'}
+                        />
+                        <AvatarFallback className="bg-badger-red text-white text-sm">
+                          {(userName || userEmail || 'U')
+                            .split(' ')
+                            .map(n => n[0])
+                            .join('')
+                            .toUpperCase()
+                            .slice(0, 2)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <ChevronDown className="h-4 w-4 text-gray-500" />
+                    </button>
+
+                    {showUserDropdown && (
+                      <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+                        <div className="px-4 py-3 border-b border-gray-100">
+                          <div className="text-sm font-medium text-gray-900 mb-1">{userName || 'User'}</div>
+                          <div className="text-xs text-gray-500 break-all">{userEmail || 'Loading...'}</div>
+                        </div>
+                        <button
+                          onClick={handleSignOut}
+                          className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          Sign out
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <SignIn />
+              )}
             </div>
           </div>
         </div>
@@ -77,8 +174,10 @@ export default function HomePage() {
                 Get Started Free
               </Link>
             </Button>
-            <Button variant="outline" size="lg" className="text-lg font-display font-semibold hover:border-badger-red hover:text-badger-red transform hover:scale-105 transition-transform duration-200">
-              Learn More
+            <Button asChild variant="outline" size="lg" className="text-lg font-display font-semibold hover:border-badger-red hover:text-badger-red transform hover:scale-105 transition-transform duration-200">
+              <Link href="/learn-more">
+                Learn More
+              </Link>
             </Button>
           </div>
         </div>
