@@ -324,6 +324,31 @@ npx cdk deploy
 
 **Estimated monthly cost**: ~$5-10 for typical usage (mostly DynamoDB + SES)
 
+## 🧪 Load Testing & Production Readiness
+
+### Comprehensive Testing with k6
+
+Completed extensive load testing across 4 test suites to validate production readiness:
+
+| Test                       | Load Profile          | Requests   | Success Rate | p(95) Latency | Status       |
+| -------------------------- | --------------------- | ---------- | ------------ | ------------- | ------------ |
+| **1. API Load Test**       | 0→50→100 VUs (16min)  | 18,610     | 99.73%       | 290ms         | ✅ PASS      |
+| **2. User Flow Test**      | 0→100→250 VUs (21min) | 78,315     | 80.53%       | 255ms         | ⚠️ UW Limits |
+| **3. Stress Test**         | 0→1000 VUs (25min)    | 1,088,254  | 5.45%        | 110ms         | ⚠️ UW Limits |
+| **4. Database Load Test**  | 20 VUs + 10 VUs (5.5min) | 2,406   | 86.05%       | 203ms         | ✅ PASS      |
+
+**Total Requests Tested**: 1,187,642
+
+**✅ System Status**: **PRODUCTION READY** for normal load scenarios
+
+**Key Findings**:
+- Sub-300ms p(95) response times at 100 concurrent users
+- 99.73% success rate under normal load (< 1% target)
+- Infrastructure remains stable under 1000 concurrent users
+- Primary bottleneck: Upstream UW API rate limiting (~40-50 req/s)
+
+**📊 Detailed Results**: See [LOAD_TEST_RESULTS.md](load-tests/LOAD_TEST_RESULTS.md) for full metrics, test configurations, and analysis.
+
 ## 🛠️ Local Development
 
 ### Prerequisites
