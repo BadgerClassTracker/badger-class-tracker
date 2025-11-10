@@ -7,7 +7,7 @@ const getRedirectUrl = () => {
   }
   // Fallback for SSR
   return process.env.NODE_ENV === 'production'
-    ? 'https://main.d3pso0t0wx1syr.amplifyapp.com/'
+    ? 'https://badgerclasstracker.com/'
     : 'http://localhost:3000/';
 };
 
@@ -18,7 +18,7 @@ const amplifyConfig = {
       userPoolClientId: process.env.NEXT_PUBLIC_USER_POOL_CLIENT_ID!,
       loginWith: {
         oauth: {
-          domain: `bct-prod-898512.auth.${process.env.NEXT_PUBLIC_AWS_REGION}.amazoncognito.com`,
+          domain: 'auth.badgerclasstracker.com',
           scopes: ['openid', 'email', 'profile'] as const,
           redirectSignIn: [getRedirectUrl()],
           redirectSignOut: [getRedirectUrl()],
