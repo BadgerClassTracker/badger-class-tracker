@@ -115,9 +115,12 @@ export class BadgerClassTrackerStack extends Stack {
     });
 
     // handy outputs
-    // Build the fully qualified Hosted UI domain explicitly (don’t rely on domain.domainName)
-    const hostedUiDomain = `${domainPrefix}.auth.${region}.amazoncognito.com`;
-    const redirectUri = "http://localhost:3000/"; // keep in sync with client oAuth callbackUrls
+    // Build the fully qualified Hosted UI domain
+    // Note: If using custom domain (e.g., auth.badgerclasstracker.com), update this value
+    const hostedUiDomain = process.env.CUSTOM_COGNITO_DOMAIN
+      ? process.env.CUSTOM_COGNITO_DOMAIN
+      : `${domainPrefix}.auth.${region}.amazoncognito.com`;
+    const redirectUri = process.env.PRODUCTION_DOMAIN || "http://localhost:3000/"; // keep in sync with client oAuth callbackUrls
 
     new CfnOutput(this, "HostedUiDomain", { value: hostedUiDomain });
     new CfnOutput(this, "CognitoLoginUrl", {
