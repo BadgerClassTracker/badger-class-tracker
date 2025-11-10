@@ -1,0 +1,14 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="badgerGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#c5050c;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#9b0000;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded rectangle background with gradient -->
+  <rect width="512" height="512" rx="102" ry="102" fill="url(#badgerGradient)"/>
+
+  <!-- Badger emoji as text -->
+  <text x="256" y="370" font-size="340" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">🦡</text>
+</svg>

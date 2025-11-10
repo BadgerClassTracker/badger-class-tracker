@@ -5,11 +5,7 @@ import { AuthProvider } from "@/components/AuthProvider";
 export const metadata: Metadata = {
   title: "Badger Class Tracker",
   description: "Track UW-Madison class enrollment and get notified when seats open up",
-  icons: {
-    icon: [
-      { url: '/favicon.ico', sizes: '32x32', type: 'image/x-icon' },
-    ],
-  },
+  // Next.js automatically uses icon.svg from app directory as favicon
 };
 
 export default function RootLayout({
